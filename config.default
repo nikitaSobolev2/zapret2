@@ -75,7 +75,7 @@ TPPORT_SOCKS=987
 # <HOSTLIST_NOAUTO> appends ipset/zapret-hosts-auto.txt as normal list
 TPWS_SOCKS_OPT="
 --filter-tcp=80 --methodeol <HOSTLIST> --new
---filter-tcp=443 --split-pos=1,midsld --disorder <HOSTLIST>
+--filter-tcp=443 --tlsrec=1 --split-pos=midsld --disorder <HOSTLIST>
 "
 
 TPWS_ENABLE=0
@@ -85,7 +85,7 @@ TPPORT=988
 TPWS_PORTS=80,443
 TPWS_OPT="
 --filter-tcp=80 --methodeol <HOSTLIST> --new
---filter-tcp=443 --split-pos=1,midsld --disorder <HOSTLIST>
+--filter-tcp=443 --tlsrec=1 --split-pos=midsld --disorder <HOSTLIST>
 "
 
 
