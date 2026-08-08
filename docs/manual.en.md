@@ -312,10 +312,17 @@ Secondary components include Linux [startup scripts](#startup-scripts) (`init.d`
 
 Two C-based programs are provided for list processing: [mdig](#mdig), a multi-threaded hostlist resolver capable of handling lists of any size, and [ip2net](#ip2net), a tool for aggregating individual IP addresses into subnets to reduce their footprint. These programs are used by the startup scripts and in [blockcheck2](#blockcheck2).
 
-[Startup scripts](#startup-scripts) and the [installer](#installer) support installation on any classic Linux distribution with systemd or OpenRC, as well as OpenWrt firmware.
+[Startup scripts](#startup-scripts) and the [installer](#installer) support installation on any classic Linux distribution with systemd or OpenRC, on OpenWrt firmware, and on macOS.
 If a system does not meet these requirements, manual integration is possible.
 
-macOS is not supported because it lacks a suitable packet interception and management tool. The standard BSD tool `ipdivert` was removed from the kernel by the manufacturer.
+`nfqws2` cannot run on macOS because the system lacks a suitable packet interception and management tool. The standard BSD tool `ipdivert` was removed from the kernel by the manufacturer, and PF does not implement `divert-packet`.
+
+macOS is therefore supported through a different daemon - **tpws**, a transparent TCP proxy that works with the payload of an already established connection instead of individual packets.
+Traffic is redirected into it by PF `rdr` and `route-to` rules kept in the `zapret2`, `zapret2-v4` and `zapret2-v6` anchors, and autostart is done by a launchd plist. See `init.d/macos` and `common/pf.sh`.
+Binaries are built with `make mac`, which produces universal (arm64 + x86_64) `tpws`, `ip2net` and `mdig`. `install_easy.sh` detects Darwin and configures everything, `TPWS_ENABLE` and `TPWS_OPT` in the [config](#config-file) hold the strategy.
+
+Two consequences of the PF approach must be kept in mind. `tpws` needs `/dev/pf` to resolve the original destination of a redirected connection, so it runs as root, and root traffic is excluded from redirection to avoid looping it back into `tpws` - traffic originating from root processes is not processed.
+The strategies available in tpws are those of the transparent proxy, not the Lua packet attacks of `nfqws2`, and [blockcheck2](#blockcheck2) on macOS only detects blocking without searching for a bypass strategy.
 
 # Traffic processing scheme
 

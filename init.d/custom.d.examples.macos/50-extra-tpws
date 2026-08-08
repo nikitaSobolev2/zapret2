@@ -1,0 +1,29 @@
+# this script is an example describing how to run an additional tpws instance on custom ports
+
+TPWS_OPT_EXTRA=${TPWS_OPT_EXTRA:---split-pos=2}
+TPWS_PORTS_EXTRA=${TPWS_PORTS_EXTRA:-20443,20444,30000-30009}
+
+alloc_dnum DNUM_EXTRA_TPWS
+alloc_tpws_port TPPORT_EXTRA_TPWS
+
+zapret_custom_daemons()
+{
+	# $1 - 1 - run, 0 - stop
+	local opt="--user=root --port=$TPPORT_EXTRA_TPWS"
+	tpws_apply_binds opt
+	opt="$opt $TPWS_OPT_EXTRA"
+	filter_apply_hostlist_target_tpws opt
+	do_daemon $1 $DNUM_EXTRA_TPWS "$TPWS" "$opt"
+}
+
+# custom firewall functions echo rules for zapret2-v4 and zapret2-v6 anchors
+# they come after automated table definitions. so you can use <zapret2> <zapret2-6> <zapret2-user> ...
+
+zapret_custom_firewall_v4()
+{
+	pf_anchor_zapret_v4_tpws $TPPORT_EXTRA_TPWS "$(pf_ports "$TPWS_PORTS_EXTRA")"
+}
+zapret_custom_firewall_v6()
+{
+	pf_anchor_zapret_v6_tpws $TPPORT_EXTRA_TPWS "$(pf_ports "$TPWS_PORTS_EXTRA")"
+}

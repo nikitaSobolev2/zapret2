@@ -6,6 +6,8 @@ SYSTEMD_DIR=/lib/systemd
 
 INIT_SCRIPT=/etc/init.d/zapret2
 
+LAUNCHD_DIR=/Library/LaunchDaemons
+
 
 exitp()
 {
@@ -247,8 +249,11 @@ check_system()
 			[ -f "$EXEDIR/init.d/sysv/functions" ] && . "$EXEDIR/init.d/sysv/functions"
 		fi
 		linux_get_subsys
+	elif [ "$UNAME" = "Darwin" ]; then
+		SYSTEM=macos
+		[ -f "$EXEDIR/init.d/macos/functions" ] && . "$EXEDIR/init.d/macos/functions"
 	else
-		echo easy installer only supports Linux. check readme.md for supported systems and manual setup info.
+		echo easy installer only supports Linux and MacOS. check readme.md for supported systems and manual setup info.
 		exitp 5
 	fi
 	echo system is based on $SYSTEM
@@ -428,6 +433,43 @@ service_remove_sysv()
 		"$INIT_SCRIPT" stop
 	}
 	rm -f "$INIT_SCRIPT"
+}
+
+service_install_macos()
+{
+	echo \* installing zapret2 service
+
+	# RunAtLoad in the plist is enough for boot. launchctl is not used to avoid session/domain quirks
+	ln -fs "$ZAPRET_BASE/init.d/macos/zapret2.plist" "$LAUNCHD_DIR"
+}
+service_start_macos()
+{
+	echo \* starting zapret2 service
+
+	"$INIT_SCRIPT_SRC" start
+}
+service_stop_macos()
+{
+	echo \* stopping zapret2 service
+
+	"$INIT_SCRIPT_SRC" stop
+}
+service_remove_macos()
+{
+	echo \* removing zapret2 service
+
+	rm -f "$LAUNCHD_DIR/zapret2.plist"
+	zapret_stop_daemons
+}
+
+remove_macos_firewall()
+{
+	echo \* removing zapret2 PF hooks
+
+	pf_anchors_clear
+	pf_anchors_del
+	pf_anchor_root_del
+	pf_anchor_root_reload
 }
 
 check_kmod()
@@ -785,6 +827,26 @@ select_fwtype()
 	write_config_var FWTYPE
 }
 
+dry_run_tpws_()
+{
+	local TPWS="$ZAPRET_BASE/tpws/tpws"
+	echo verifying tpws options
+	"$TPWS" --dry-run ${WS_USER:+--user=$WS_USER} "$@"
+}
+dry_run_tpws()
+{
+	[ "$TPWS_ENABLE" = 1 ] || return 0
+	local opt="$TPWS_OPT" port=${TPPORT:-988}
+	filter_apply_hostlist_target_tpws opt
+	dry_run_tpws_ --port=$port $opt
+}
+dry_run_tpws_socks()
+{
+	[ "$TPWS_SOCKS_ENABLE" = 1 ] || return 0
+	local opt="$TPWS_SOCKS_OPT" port=${TPPORT_SOCKS:-987}
+	filter_apply_hostlist_target_tpws opt
+	dry_run_tpws_ --port=$port --socks $opt
+}
 dry_run_nfqws_()
 {
 	local NFQWS="$ZAPRET_BASE/nfq2/nfqws2"

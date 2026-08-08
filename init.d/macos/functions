@@ -1,0 +1,261 @@
+# init script functions library for macos
+
+ZAPRET_BASE=${ZAPRET_BASE:-/opt/zapret2}
+ZAPRET_RW=${ZAPRET_RW:-"$ZAPRET_BASE"}
+ZAPRET_CONFIG=${ZAPRET_CONFIG:-"$ZAPRET_RW/config"}
+. "$ZAPRET_CONFIG"
+. "$ZAPRET_BASE/common/base.sh"
+. "$ZAPRET_BASE/common/pf.sh"
+. "$ZAPRET_BASE/common/list.sh"
+. "$ZAPRET_BASE/common/custom.sh"
+CUSTOM_DIR="$ZAPRET_RW/init.d/macos"
+
+IPSET_DIR=$ZAPRET_BASE/ipset
+. "$IPSET_DIR/def.sh"
+
+# without it msleep degrades to whole second sleeps
+fsleep_setup
+
+PIDDIR=/var/run
+[ -n "$TPPORT" ] || TPPORT=988
+[ -n "$TPPORT_SOCKS" ] || TPPORT_SOCKS=987
+[ -n "$WS_USER" ] || WS_USER=daemon
+TPWS_WAIT="--bind-wait-ifup=30 --bind-wait-ip=30"
+TPWS_WAIT_SOCKS6="$TPWS_WAIT --bind-wait-ip-linklocal=30"
+[ -n "$TPWS" ] || TPWS="$ZAPRET_BASE/tpws/tpws"
+
+CUSTOM_SCRIPT="$ZAPRET_BASE/init.d/macos/custom"
+[ -f "$CUSTOM_SCRIPT" ] && . "$CUSTOM_SCRIPT"
+
+pidfile_of_daemon()
+{
+	# $1 - daemon number : 1,2,3,...
+	# $2 - daemon
+	echo "$PIDDIR/$(basename "$2")_$1.pid"
+}
+daemon_pids_by_pidfile()
+{
+	# $1 - pidfile path passed to the daemon in --pidfile=
+	# macos has no /proc, so a stale pidfile is resolved through the daemon command line
+	pgrep -f "pidfile=$1" 2>/dev/null
+}
+wait_pid_terminate()
+{
+	# $1 - pid
+	# $2 - max iterations of 0.1s wait
+	local pid="$1" max="${2:-30}" i=0
+	[ -n "$pid" ] || return 0
+	while [ "$i" -lt "$max" ]; do
+		kill -0 "$pid" 2>/dev/null || return 0
+		msleep 100
+		i=$((i + 1))
+	done
+	kill -9 "$pid" 2>/dev/null
+	return 0
+}
+
+run_daemon()
+{
+	# $1 - daemon number : 1,2,3,...
+	# $2 - daemon
+	# $3 - daemon args
+	local PIDFILE="$(pidfile_of_daemon "$1" "$2")"
+	local ARGS="--daemon --pidfile=$PIDFILE $3"
+
+	daemon_pids_by_pidfile "$PIDFILE" >/dev/null && {
+		echo "Already running $1: $2"
+		return 0
+	}
+	echo "Starting daemon $1: $2 $ARGS"
+	"$2" $ARGS
+}
+stop_daemon()
+{
+	# $1 - daemon number : 1,2,3,...
+	# $2 - daemon
+	local PID orphan
+	local PIDFILE="$(pidfile_of_daemon "$1" "$2")"
+
+	[ -f "$PIDFILE" ] && read PID <"$PIDFILE"
+	[ -n "$PID" ] && {
+		echo "Stopping daemon $1: $2 (PID=$PID)"
+		kill "$PID" 2>/dev/null
+		wait_pid_terminate "$PID"
+	}
+	for orphan in $(daemon_pids_by_pidfile "$PIDFILE"); do
+		echo "Stopping orphan daemon $1: $2 (PID=$orphan)"
+		kill "$orphan" 2>/dev/null
+		wait_pid_terminate "$orphan"
+	done
+	rm -f "$PIDFILE"
+	return 0
+}
+do_daemon()
+{
+	# $1 - 1 - run, 0 - stop
+	on_off_function run_daemon stop_daemon "$@"
+}
+
+tpws_apply_binds()
+{
+	local o
+	[ "$DISABLE_IPV4" = "1" ] || o="--bind-addr=127.0.0.1"
+	[ "$DISABLE_IPV6" = "1" ] || {
+		for i in lo0 $IFACE_LAN; do
+			o="$o --bind-iface6=$i --bind-linklocal=force $TPWS_WAIT"
+		done
+	}
+	eval $1="\"\$$1 $o\""
+}
+tpws_apply_socks_binds()
+{
+	local o
+
+	[ "$DISABLE_IPV4" = "1" ] || o="--bind-addr=127.0.0.1"
+	[ "$DISABLE_IPV6" = "1" ] || o="$o --bind-addr=::1"
+
+	for lan in $IFACE_LAN; do
+	    [ "$DISABLE_IPV4" = "1" ] || o="$o --bind-iface4=$lan $TPWS_WAIT"
+	    [ "$DISABLE_IPV6" = "1" ] || o="$o --bind-iface6=$lan --bind-linklocal=unwanted $TPWS_WAIT_SOCKS6"
+	done
+	eval $1="\"\$$1 $o\""
+}
+
+wait_interface_ll()
+{
+	echo waiting for an ipv6 link local address on $1 ...
+	"$TPWS" --bind-wait-only --bind-iface6=$1 --bind-linklocal=force $TPWS_WAIT
+}
+wait_lan_ll()
+{
+	[ "$DISABLE_IPV6" != "1" ] && {
+		for lan in $IFACE_LAN; do
+			wait_interface_ll $lan >&2 || {
+				echo "wait interface failed on $lan"
+				return 1
+			}
+		done
+	}
+	return 0
+}
+get_ipv6_linklocal()
+{
+	ifconfig $1 | sed -nEe 's/^.*inet6 (fe80:[a-f0-9:]+).*/\1/p'
+}
+
+
+zapret_do_firewall()
+{
+	# $1 - 1 - add, 0 - del
+
+	[ "$1" = 1 -a -n "$INIT_FW_PRE_UP_HOOK" ] && $INIT_FW_PRE_UP_HOOK
+	[ "$1" = 0 -a -n "$INIT_FW_PRE_DOWN_HOOK" ] && $INIT_FW_PRE_DOWN_HOOK
+
+	if [ "$1" = "1" ] ; then
+		pf_anchor_root || return 1
+		pf_anchors_create
+		pf_anchors_load || return 1
+		pf_enable
+	else
+		pf_anchors_clear
+	fi
+
+	[ "$1" = 1 -a -n "$INIT_FW_POST_UP_HOOK" ] && $INIT_FW_POST_UP_HOOK
+	[ "$1" = 0 -a -n "$INIT_FW_POST_DOWN_HOOK" ] && $INIT_FW_POST_DOWN_HOOK
+
+	return 0
+}
+zapret_apply_firewall()
+{
+	zapret_do_firewall 1 "$@"
+}
+zapret_unapply_firewall()
+{
+	zapret_do_firewall 0 "$@"
+}
+zapret_restart_firewall()
+{
+	zapret_unapply_firewall "$@"
+	zapret_apply_firewall "$@"
+}
+
+
+standard_mode_daemons()
+{
+	local opt
+
+	if [ "$1" = "1" ] && [ "$DISABLE_IPV4" = "1" ] && [ "$DISABLE_IPV6" = "1" ] ; then
+		echo "both ipv4 and ipv6 are disabled. nothing to do"
+	else
+		[ "$TPWS_ENABLE" = 1 ] && check_bad_ws_options $1 "$TPWS_OPT" && {
+			# PF needs /dev/pf to resolve the original destination, that requires root
+			opt="--user=root --port=$TPPORT"
+			tpws_apply_binds opt
+			opt="$opt $TPWS_OPT"
+			filter_apply_hostlist_target_tpws opt
+			do_daemon $1 1 "$TPWS" "$opt"
+		}
+		[ "$TPWS_SOCKS_ENABLE" = 1 ] && {
+			opt="--socks --user=$WS_USER --port=$TPPORT_SOCKS"
+			tpws_apply_socks_binds opt
+			opt="$opt $TPWS_SOCKS_OPT"
+			filter_apply_hostlist_target_tpws opt
+			do_daemon $1 2 "$TPWS" "$opt"
+		}
+	fi
+}
+
+zapret_do_daemons()
+{
+	# $1 - 1 - run, 0 - stop
+
+	standard_mode_daemons $1
+	custom_runner zapret_custom_daemons $1
+
+	return 0
+}
+zapret_run_daemons()
+{
+	zapret_do_daemons 1 "$@"
+}
+zapret_stop_daemons()
+{
+	zapret_do_daemons 0 "$@"
+}
+zapret_restart_daemons()
+{
+	zapret_stop_daemons "$@"
+	zapret_run_daemons "$@"
+}
+
+# returns 0 only if every enabled tpws daemon is actually alive.
+# used to gate the firewall : PF must never redirect 80/443 to a dead tpws port.
+zapret_daemons_ok()
+{
+	local pf
+	[ "$TPWS_ENABLE" = 1 ] && {
+		pf="$(pidfile_of_daemon 1 "$TPWS")"
+		daemon_pids_by_pidfile "$pf" >/dev/null 2>&1 || return 1
+	}
+	[ "$TPWS_SOCKS_ENABLE" = 1 ] && {
+		pf="$(pidfile_of_daemon 2 "$TPWS")"
+		daemon_pids_by_pidfile "$pf" >/dev/null 2>&1 || return 1
+	}
+	return 0
+}
+
+# probes real web connectivity as the logged-in user, i.e. through the PF redirect.
+# a full-tunnel VPN or a broken route-to can silently swallow the redirected traffic,
+# so this is how we detect "firewall applied but internet dead" and roll back.
+# returns 0 if reachable OR if we cannot run the probe (never block on uncertainty).
+zapret_verify_connectivity()
+{
+	local cu
+	cu=$(stat -f%Su /dev/console 2>/dev/null)
+	[ -n "$cu" ] && [ "$cu" != root ] || return 0
+	command -v curl >/dev/null 2>&1 || return 0
+	# any of these answering means the redirect path is intact
+	sudo -u "$cu" curl -s -o /dev/null --max-time 5 https://www.google.com 2>/dev/null && return 0
+	sudo -u "$cu" curl -s -o /dev/null --max-time 5 https://www.apple.com 2>/dev/null && return 0
+	return 1
+}

@@ -377,6 +377,13 @@ check_system()
 			PKTWSD=dvtws2
 			FWTYPE=opf
 			;;
+		Darwin)
+			# apple removed ipdivert and PF has no divert-packet, so no packet daemon can run here
+			FWTYPE=mpf
+			SKIP_PKTWS=1
+			echo "macos has no packet intercept facility. only blocking detection will run, without bypass strategy search."
+			echo "use tpws options from config.default and verify them manually."
+			;;
 		CYGWIN*)
 			UNAME=CYGWIN
 			PKTWS="$WINWS2"
@@ -417,6 +424,9 @@ zp_already_running()
 			;;
 		FreeBSD|OpenBSD)
 			process_exists $PKTWSD || process_exists tpws || process_exists dvtws
+			;;
+		Darwin)
+			process_exists tpws
 			;;
 		Linux)
 			process_exists $PKTWSD || process_exists tpws || process_exists nfqws

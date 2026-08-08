@@ -64,6 +64,13 @@ select_test_method()
 
 }
 
+disable_antivirus()
+{
+	# $1 - dir
+	# gatekeeper refuses to run downloaded binaries until the quarantine attribute is gone
+	[ "$UNAME" = Darwin ] && find "$1" -maxdepth 1 -type f -perm +111 -exec xattr -d com.apple.quarantine {} \; 2>/dev/null
+}
+
 check_dir()
 {
 	local dir="$BINDIR/$1"
@@ -71,6 +78,7 @@ check_dir()
 	local out
 	if [ -f "$exe" ]; then
 		if [ -x "$exe" ]; then
+			disable_antivirus "$dir"
 			case $TEST in
 				bash)
 					out=$(echo 0.0.0.0 | bash -c "\"$exe"\" 2>/dev/null)
@@ -136,7 +144,9 @@ if [ ! -d "$BINDIR" ] || ! dir_is_not_empty "$BINDIR" ]; then
 			echo "to compile on other systems : make"
 			;;
 		Darwin)
-			echo "macos is not supported"
+			echo "you need to download release from github or build binaries from source"
+			echo "building from source requires xcode command line tools : xcode-select --install"
+			echo "to compile : make mac"
 			;;
 		FreeBSD)
 			echo "you need to download release from github or build binaries from source"
@@ -155,10 +165,16 @@ if [ ! -d "$BINDIR" ] || ! dir_is_not_empty "$BINDIR" ]; then
 fi
 
 unset PKTWS
+unset TPWS
 case $UNAME in
 	Linux)
 		ARCHLIST="my linux-x86_64 linux-x86 linux-arm64 linux-arm linux-mips64 linux-mipsel64 linux-mipsel linux-mips linux-lexra linux-ppc linux-riscv64"
 		PKTWS=nfqws2
+		;;
+	Darwin)
+		# macos has no packet intercept facility. tpws is the only available daemon there
+		ARCHLIST="my mac64"
+		TPWS=tpws
 		;;
 	FreeBSD)
 		ARCHLIST="my freebsd-x86_64"
@@ -196,6 +212,7 @@ else
 			ccp $arch/ip2net ip2net
 			ccp $arch/mdig mdig
 			[ -n "$PKTWS" ] && ccp $arch/$PKTWS nfq2
+			[ -n "$TPWS" ] && ccp $arch/$TPWS tpws
 	 		exit 0
 		else
 			echo $arch is NOT OK

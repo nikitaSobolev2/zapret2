@@ -12,3 +12,9 @@ ipset/zapret-ip*.gz
 ipset/zapret-hosts*.txt
 ipset/zapret-hosts*.gz
 .vscode/
+.cursor/
+app/.gradle/
+app/build/
+app/bin/
+*.iml
+.idea/

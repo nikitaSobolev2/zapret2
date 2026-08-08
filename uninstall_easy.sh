@@ -76,6 +76,14 @@ remove_openwrt()
 	echo to fully remove zapret : rm -r \"$ZAPRET_BASE\"
 }
 
+remove_macos()
+{
+	# PF helpers and daemon stop come from init.d/macos/functions, sourced by check_system
+	remove_macos_firewall
+	service_remove_macos
+	crontab_del
+}
+
 fix_sbin_path
 check_system
 require_root
@@ -92,6 +100,9 @@ case $SYSTEM in
 		;;
 	openwrt)
 		remove_openwrt
+		;;
+	macos)
+		remove_macos
 		;;
 esac
 

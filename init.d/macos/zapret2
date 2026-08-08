@@ -1,0 +1,75 @@
+#!/bin/sh
+
+# keep a full PATH so the script behaves the same under launchd, sudo and the app,
+# where the inherited PATH may be minimal and miss pfctl, pgrep, curl, etc.
+PATH="/usr/sbin:/sbin:/usr/bin:/bin"
+export PATH
+
+EXEDIR="$(dirname "$0")"
+ZAPRET_BASE="$EXEDIR/../.."
+ZAPRET_BASE="$(cd "$ZAPRET_BASE"; pwd)"
+
+. "$EXEDIR/functions"
+
+case "$1" in
+	start)
+		# stop first so a restart or a stale daemon can never leave port 988 occupied
+		zapret_stop_daemons
+		zapret_run_daemons
+		# give tpws a moment to daemonize and bind before probing it
+		msleep 400
+		if ! zapret_daemons_ok; then
+			echo "zapret2: daemons failed to start. NOT applying firewall to keep connectivity." >&2
+			zapret_stop_daemons
+			exit 1
+		fi
+		[ "$INIT_APPLY_FW" != "1" ] || {
+			zapret_apply_firewall
+			# self-check : if the redirect killed connectivity (e.g. full-tunnel VPN
+			# on the default route), roll everything back instead of leaving a dead net
+			zapret_verify_connectivity || {
+				echo "zapret2: no connectivity after applying PF. rolling back." >&2
+				echo "zapret2: a VPN/tunnel on the default route can conflict with the transparent redirect." >&2
+				zapret_unapply_firewall
+				zapret_stop_daemons
+				exit 1
+			}
+		}
+		;;
+	stop)
+		[ "$INIT_APPLY_FW" != "1" ] || zapret_unapply_firewall
+		zapret_stop_daemons
+		;;
+	restart)
+		"$0" stop
+		"$0" start
+		;;
+
+	start-fw|start_fw)
+		zapret_apply_firewall
+		;;
+	stop-fw|stop_fw)
+		zapret_unapply_firewall
+		;;
+	restart-fw|restart_fw)
+		zapret_restart_firewall
+		;;
+	reload-fw-tables|reload_fw_tables)
+		pf_table_reload
+		;;
+
+	start-daemons|start_daemons)
+		zapret_run_daemons
+		;;
+	stop-daemons|stop_daemons)
+		zapret_stop_daemons
+		;;
+	restart-daemons|restart_daemons)
+		zapret_restart_daemons
+		;;
+
+	*)
+		echo "Usage: $0 {start|stop|restart|start-fw|stop-fw|restart-fw|reload-fw-tables|start-daemons|stop-daemons|restart-daemons}" >&2
+		exit 1
+		;;
+esac

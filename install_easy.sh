@@ -62,6 +62,9 @@ check_source()
 		openrc)
 			[ -f "$EXEDIR/init.d/openrc/zapret2" ] || bad=1
 			;;
+		macos)
+			[ -f "$EXEDIR/init.d/macos/zapret2" ] || bad=1
+			;;
        esac
        [ "$bad" = 1 ] && {
                echo 'some critical files are missing'
@@ -93,6 +96,11 @@ check_bins()
 		case $SYSTEM in
 			systemd)
 				make_target=systemd
+				;;
+			macos)
+				make_target=mac
+				# universal binary is cross compiled for two arches. native tuning does not apply
+				cf=
 				;;
 		esac
 		CFLAGS="${cf:+$cf }${CFLAGS}" OPTIMIZE=-O2 make -C "$EXEDIR" $make_target || {
@@ -149,6 +157,22 @@ nfqws_opt_validate()
 		return 1
 	}
 }
+tpws_opt_validate()
+{
+	ws_opt_validate "$1" || return 1
+	dry_run_tpws || {
+		echo invalid tpws options
+		return 1
+	}
+}
+tpws_socks_opt_validate()
+{
+	# --ipset allowed here
+	dry_run_tpws_socks || {
+		echo invalid tpws options
+		return 1
+	}
+}
 
 select_mode_group()
 {
@@ -199,9 +223,26 @@ select_mode_nfqws()
 	select_mode_group NFQWS2_ENABLE "enable nfqws2 ?" "NFQWS2_PORTS_TCP NFQWS2_PORTS_UDP NFQWS2_TCP_PKT_OUT NFQWS2_TCP_PKT_IN NFQWS2_UDP_PKT_OUT NFQWS2_UDP_PKT_IN NFQWS2_PORTS_TCP_KEEPALIVE NFQWS2_PORTS_UDP_KEEPALIVE NFQWS2_OPT" nfqws_opt_validate NFQWS2_OPT
 }
 
+select_mode_tpws()
+{
+	local EDITVAR_NEWLINE_DELIMETERS="--new" EDITVAR_NEWLINE_VARS="TPWS_OPT"
+	select_mode_group TPWS_ENABLE "enable tpws transparent mode ?" "TPWS_PORTS TPWS_OPT" tpws_opt_validate TPWS_OPT
+}
+select_mode_tpws_socks()
+{
+	local EDITVAR_NEWLINE_DELIMETERS="--new" EDITVAR_NEWLINE_VARS="TPWS_SOCKS_OPT"
+	select_mode_group TPWS_SOCKS_ENABLE "enable tpws socks mode on port $TPPORT_SOCKS ?" "TPPORT_SOCKS TPWS_SOCKS_OPT" tpws_socks_opt_validate TPWS_SOCKS_OPT
+}
+
 select_mode_mode()
 {
-	select_mode_nfqws
+	# macos has no packet intercept facility. tpws is the only available daemon there
+	if [ "$SYSTEM" = macos ]; then
+		select_mode_tpws
+		select_mode_tpws_socks
+	else
+		select_mode_nfqws
+	fi
 
 	echo
 	echo "current custom scripts in $CUSTOM_DIR/custom.d:"
@@ -312,7 +353,13 @@ ask_iface()
 	eval def="\$$1"
 
 	[ -n "$2" ] && i0="$2 "
-	ifs="$(ls /sys/class/net)"
+	case $SYSTEM in
+		macos)
+			ifs="$(ifconfig -l)"
+			;;
+		*)
+			ifs="$(ls /sys/class/net)"
+	esac
 	[ -z "$def" ] && eval $1="$2"
 	ask_list $1 "$i0$ifs" && {
 		eval new="\$$1"
@@ -403,7 +450,7 @@ fix_perms()
 			chow=root:wheel
 	esac
 	chown -R $chow "$1"
-	find "$1/binaries" '(' -name dvtws2 -o -name nfqws2 -o -name ip2net -o -name mdig ')' -exec chmod 755 {} \;
+	find "$1/binaries" '(' -name dvtws2 -o -name nfqws2 -o -name tpws -o -name ip2net -o -name mdig ')' -exec chmod 755 {} \;
 	for f in \
 install_bin.sh \
 blockcheck2.sh \
@@ -435,6 +482,7 @@ ipset/get_antifilter_ip.sh \
 ipset/get_antifilter_ipresolve.sh \
 ipset/get_antizapret_domains.sh \
 init.d/pfsense/zapret2.sh \
+init.d/macos/zapret2 \
 init.d/runit/zapret2/run \
 init.d/runit/zapret2/finish \
 init.d/openrc/zapret2 \
@@ -478,7 +526,7 @@ backup_restore_settings()
 {
 	# $1 - 1 - backup, 0 - restore
 	local mode=$1
-	on_off_function _backup_settings _restore_settings $mode "config" "init.d/sysv/custom.d" "init.d/openwrt/custom.d" "ipset/zapret-hosts-user.txt" "ipset/zapret-hosts-user-exclude.txt" "ipset/zapret-hosts-user-ipban.txt" "ipset/zapret-hosts-auto.txt"
+	on_off_function _backup_settings _restore_settings $mode "config" "init.d/sysv/custom.d" "init.d/openwrt/custom.d" "init.d/macos/custom.d" "ipset/zapret-hosts-user.txt" "ipset/zapret-hosts-user-exclude.txt" "ipset/zapret-hosts-user-ipban.txt" "ipset/zapret-hosts-auto.txt"
 }
 
 check_location()
@@ -787,7 +835,7 @@ install_openwrt()
 
 remove_pf_zapret_hooks()
 {
-	echo \* removing zapret PF hooks
+	echo \* removing zapret2 PF hooks
 
 	pf_anchors_clear
 }
@@ -801,6 +849,35 @@ macos_fw_reload_trigger_set()
 {
 	LISTS_RELOAD="$INIT_SCRIPT_SRC reload-fw-tables"
 	write_config_var LISTS_RELOAD
+}
+
+install_macos()
+{
+	INIT_SCRIPT_SRC="$EXEDIR/init.d/macos/zapret2"
+	CUSTOM_DIR="$ZAPRET_RW/init.d/macos"
+
+	# compile before root
+	check_bins
+	require_root
+	check_location copy_all
+	service_stop_macos
+	remove_pf_zapret_hooks
+	install_binaries
+	check_dns
+	select_ipv6
+	ask_config
+	service_install_macos
+	# lists are downloaded with the trigger off because PF anchors are not loaded yet
+	macos_fw_reload_trigger_clear
+	# PF reads table files as plain text
+	GZIP_LISTS=0
+	write_config_var GZIP_LISTS
+	download_list
+	macos_fw_reload_trigger_set
+	crontab_del_quiet
+	# desktop system. more likely up at daytime
+	crontab_add 10 22
+	service_start_macos
 }
 
 
@@ -826,6 +903,9 @@ case $SYSTEM in
 		;;
 	openwrt)
 		install_openwrt
+		;;
+	macos)
+		install_macos
 		;;
 esac
 

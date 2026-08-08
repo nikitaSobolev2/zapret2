@@ -42,3 +42,10 @@ make -C /opt/zapret2
 
 pkg_add luajit gmake
 gmake -C /opt/zapret2 bsd
+
+* macOS :
+
+xcode-select --install
+make -C /opt/zapret2 mac
+
+builds universal (arm64 + x86_64) tpws, ip2net and mdig. nfqws2 is not built : macOS has no packet intercept facility

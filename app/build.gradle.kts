@@ -1,0 +1,60 @@
+import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+
+plugins {
+    kotlin("jvm") version "2.3.21"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.3.21"
+    id("org.jetbrains.compose") version "1.11.1"
+}
+
+group = "zapret"
+version = "1.0.0"
+
+kotlin {
+    jvmToolchain(21)
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
+
+dependencies {
+    implementation(compose.desktop.currentOs)
+    @Suppress("DEPRECATION")
+    implementation(compose.material3)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")
+    testImplementation(kotlin("test"))
+}
+
+// the packaged app carries the zapret2 sources so that it can build and install them itself
+val zapretSourceRoot: File = rootDir.parentFile
+
+val stageZapretSource = tasks.register<Sync>("stageZapretSource") {
+    from(zapretSourceRoot) {
+        exclude(".git", ".github", ".cursor", "app", "docs", "nfq2", "tmp")
+        exclude("**/.DS_Store", "**/.gradle/**")
+    }
+    into(layout.buildDirectory.dir("appResources/common/zapret2-src"))
+}
+
+// the Compose plugin collects appResourcesRootDir in this task, so the sources must be staged first
+tasks.matching { it.name == "prepareAppResources" }.configureEach { dependsOn(stageZapretSource) }
+
+compose.desktop {
+    application {
+        mainClass = "zapret.MainKt"
+
+        nativeDistributions {
+            targetFormats(TargetFormat.Dmg)
+            packageName = "Zapret"
+            packageVersion = project.version.toString()
+            description = "Управление zapret2 на macOS"
+            appResourcesRootDir.set(layout.buildDirectory.dir("appResources"))
+
+            macOS {
+                bundleID = "org.zapret.macos.control"
+                dockName = "Zapret"
+                minimumSystemVersion = "12.0"
+            }
+        }
+    }
+}
