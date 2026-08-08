@@ -50,6 +50,10 @@ clean-mac:
 	$(call clean_dirs,$(DIRS_MAC))
 
 # Compose Desktop control app (JDK 21+)
+# Homebrew: brew tap nikitaSobolev2/zapret2 https://github.com/nikitaSobolev2/zapret2 && brew install --cask zapret
+# optional version: APP_VERSION=1.0.1 make app-dmg
+APP_VERSION ?=
+
 app:
 	cd app && ./gradlew run
 
@@ -57,4 +61,4 @@ app-package:
 	cd app && ./gradlew createDistributable
 
 app-dmg:
-	cd app && ./gradlew packageDmg
+	cd app && ./gradlew packageDmg $(if $(APP_VERSION),-PappVersion=$(APP_VERSION),)

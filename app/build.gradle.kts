@@ -7,7 +7,8 @@ plugins {
 }
 
 group = "zapret"
-version = "1.0.0"
+// CI passes -PappVersion=1.2.3 (from git tag v1.2.3); local default stays 1.0.0
+version = providers.gradleProperty("appVersion").orElse("1.0.0").get()
 
 kotlin {
     jvmToolchain(21)
