@@ -11,6 +11,8 @@ The DMG also ships a headless **tg-ws-proxy** sidecar — vendored MIT code by
 **[Flowseal](https://github.com/Flowseal/tg-ws-proxy)**
 ([github.com/Flowseal/tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy)) under
 `third_party/tg-ws-proxy/`. Gradle task `buildTgWsProxySidecar` builds it into app resources.
+The app (and the Homebrew cask `postflight`) restores the execute bit on the nested
+Mach-O if a DMG/Homebrew copy dropped it.
 The Compose app starts/stops it with Zapret (user process on `127.0.0.1:1443`, no sudo).
 Settings credit the author with a link to that repository.
 

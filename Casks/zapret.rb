@@ -26,6 +26,12 @@ cask "zapret" do
 
   app "Zapret.app"
 
+  # Nested PyInstaller Mach-O often loses +x when the DMG is copied into /Applications.
+  postflight do
+    binary = "#{appdir}/Zapret.app/Contents/app/resources/tg-ws-proxy/tg-ws-proxy"
+    File.chmod(0o755, binary) if File.exist?(binary)
+  end
+
   zap trash: [
     "~/Library/Caches/org.zapret.macos.control",
     "~/Library/Preferences/org.zapret.macos.control.plist",

@@ -19,6 +19,11 @@ object TgWsProxyPaths {
     fun bundledBinary(): File? {
         val resources = System.getProperty("compose.application.resources.dir")?.let(::File) ?: return null
         val candidate = File(resources, "tg-ws-proxy/tg-ws-proxy")
+        if (!candidate.isFile) return null
+        // DMG / Homebrew installs often drop the execute bit from nested Mach-O binaries.
+        if (!candidate.canExecute()) {
+            candidate.setExecutable(true, false)
+        }
         return candidate.takeIf { it.canExecute() }
     }
 

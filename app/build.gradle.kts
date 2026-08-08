@@ -77,6 +77,11 @@ val buildTgWsProxySidecar = tasks.register<Exec>("buildTgWsProxySidecar") {
         tgWsProxyRoot.resolve("packaging/build_sidecar.sh").absolutePath,
         tgWsProxyStaged.get().asFile.absolutePath,
     )
+    doLast {
+        val binary = tgWsProxyStaged.get().asFile.resolve("tg-ws-proxy")
+        check(binary.isFile) { "tg-ws-proxy sidecar missing at $binary" }
+        binary.setExecutable(true, false)
+    }
 }
 
 val buildStagedZapret = tasks.register<Exec>("buildStagedZapret") {
