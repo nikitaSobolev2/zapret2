@@ -47,6 +47,12 @@ fun ApplicationScope.TrayMenu(model: AppViewModel) {
                 )
             }
             Separator()
+            Item(
+                text = "Перезапустить Telegram proxy",
+                enabled = state.busy == null && state.tgConfig.enabled,
+                onClick = model::restartTgProxy,
+            )
+            Separator()
             Item(text = "Открыть окно", onClick = { model.openWindow(Screen.HOME) })
             Item(text = "Настройки", onClick = { model.openWindow(Screen.SETTINGS) })
             Separator()

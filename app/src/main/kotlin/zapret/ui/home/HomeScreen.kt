@@ -71,6 +71,7 @@ fun HomeScreen(
             InfoCard("Режим фильтра", state.config.filterMode.label, onClick = open)
             InfoCard("Порты", "${state.config.tpwsPorts} → ${state.config.tpwsPort}", onClick = open)
             InfoCard("Стратегия", state.strategyPreview(), onClick = open)
+            InfoCard("Telegram proxy", state.tgStatusLine(), onClick = open)
         }
     }
 }
@@ -117,9 +118,22 @@ private fun UiState.headline(): String = when {
 
 private fun UiState.subline(): String = when {
     !installed -> "Нажмите кнопку, чтобы собрать и установить zapret2"
-    running -> "tpws на порту ${config.tpwsPort} · фильтр: ${config.filterMode.label}"
+    running -> buildString {
+        append("tpws :${config.tpwsPort} · ${config.filterMode.label}")
+        if (tgConfig.enabled) {
+            append(" · TG ")
+            append(if (tgRunning) ":${tgConfig.port}" else "выкл")
+        }
+    }
     else -> "Нажмите кнопку, чтобы включить обход"
 }
 
 private fun UiState.strategyPreview(): String =
     config.tpwsOpt.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() } ?: "не задана"
+
+private fun UiState.tgStatusLine(): String = when {
+    !tgConfig.enabled -> "выключен в настройках"
+    tgRunning -> "работает · ${tgConfig.host}:${tgConfig.port}"
+    running -> "ожидает / не запущен"
+    else -> "стартует вместе с Zapret"
+}

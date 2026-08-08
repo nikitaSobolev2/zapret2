@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tg-ws-proxy-headless"
+version = "1.9.1"
+description = "Headless Telegram MTProto WebSocket bridge (vendored for Zapret)"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "certifi",
+    "cryptography>=41.0.0",
+]
+
+[project.scripts]
+tg-ws-proxy = "proxy.tg_ws_proxy:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["proxy"]

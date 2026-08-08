@@ -36,12 +36,23 @@ val stageZapretSource = tasks.register<Sync>("stageZapretSource") {
     // Previous make leaves relative symlinks; Sync cannot replace those in-place.
     doFirst { delete(zapretStaged) }
     from(zapretSourceRoot) {
-        exclude(".git", ".github", ".cursor", "app", "docs", "nfq2", "tmp")
+        exclude(".git", ".github", ".cursor", "app", "docs", "nfq2", "tmp", "third_party")
         exclude("**/.DS_Store", "**/.gradle/**")
         // Always rebuild inside the stage dir; do not copy a host binaries/ tree.
         exclude("binaries")
     }
     into(zapretStaged)
+}
+
+val tgWsProxyRoot = zapretSourceRoot.resolve("third_party/tg-ws-proxy")
+val tgWsProxyStaged = layout.buildDirectory.dir("appResources/common/tg-ws-proxy")
+
+val buildTgWsProxySidecar = tasks.register<Exec>("buildTgWsProxySidecar") {
+    onlyIf { tgWsProxyRoot.resolve("packaging/build_sidecar.sh").canExecute() }
+    commandLine(
+        tgWsProxyRoot.resolve("packaging/build_sidecar.sh").absolutePath,
+        tgWsProxyStaged.get().asFile.absolutePath,
+    )
 }
 
 val buildStagedZapret = tasks.register<Exec>("buildStagedZapret") {
@@ -63,7 +74,9 @@ val buildStagedZapret = tasks.register<Exec>("buildStagedZapret") {
 }
 
 // the Compose plugin collects appResourcesRootDir in this task, so the sources must be staged first
-tasks.matching { it.name == "prepareAppResources" }.configureEach { dependsOn(buildStagedZapret) }
+tasks.matching { it.name == "prepareAppResources" }.configureEach {
+    dependsOn(buildStagedZapret, buildTgWsProxySidecar)
+}
 
 compose.desktop {
     application {

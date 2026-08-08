@@ -7,6 +7,24 @@ Packaging runs `make mac` into the staged source tree, so the DMG ships a univer
 `tpws` (plus `ip2net` / `mdig`). Install skips compile when that binary is present — Xcode CLT
 is only needed for source-only / Gradle-dev trees without a prior build.
 
+The DMG also ships a headless **tg-ws-proxy** sidecar — vendored MIT code by
+**[Flowseal](https://github.com/Flowseal/tg-ws-proxy)**
+([github.com/Flowseal/tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy)) under
+`third_party/tg-ws-proxy/`. Gradle task `buildTgWsProxySidecar` builds it into app resources.
+The Compose app starts/stops it with Zapret (user process on `127.0.0.1:1443`, no sudo).
+Settings credit the author with a link to that repository.
+
+### Telegram Desktop fix
+
+1. Start Zapret (power button → status «Работает»).
+2. **Settings → Telegram MTProto proxy** (credit: Flowseal / tg-ws-proxy) — leave **«Включён с Zapret»** on.
+3. Click **«Открыть в Telegram»** (`open tg://proxy?…`, same as upstream TG WS Proxy tray).
+4. Fallback: **«Копировать tg:// proxy»** and open the link inside Telegram, or add an MTProto
+   proxy manually (Advanced → Connection type).
+
+Helps **Telegram Desktop** only. Does not fix `web.telegram.org` when the ISP blackholes Telegram
+IPs at TCP level. Config/logs: `~/Library/Application Support/Zapret/tg-ws-proxy/`.
+
 ## Install with Homebrew
 
 ```bash

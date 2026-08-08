@@ -7,16 +7,21 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import zapret.domain.CombinedStatus
 import zapret.domain.CommandResult
 import zapret.domain.ConfigStore
 import zapret.domain.ConfigWriter
-import zapret.domain.DaemonStatus
 import zapret.domain.InstallService
 import zapret.domain.PasswordlessControl
 import zapret.domain.Prerequisites
 import zapret.domain.PrivilegeEscalationCancelled
 import zapret.domain.PrivilegeRunner
+import zapret.domain.ServiceOrchestrator
 import zapret.domain.StatusPoller
+import zapret.domain.TgWsProxyConfig
+import zapret.domain.TgWsProxyService
+import zapret.domain.TgWsProxyStore
+import zapret.domain.TgWsProxyValidation
 import zapret.domain.UninstallScope
 import zapret.domain.UninstallService
 import zapret.domain.ZapretConfig
@@ -32,11 +37,14 @@ class AppViewModel(private val scope: CoroutineScope) {
 
     private val privileges = PrivilegeRunner()
     private val service = ZapretService(privileges)
-    private val poller = StatusPoller(service)
+    private val tgProxy = TgWsProxyService()
+    private val tgStore = TgWsProxyStore()
+    private val orchestrator = ServiceOrchestrator(service, tgProxy, tgStore)
+    private val poller = StatusPoller(service, tgProxy)
     private val configStore = ConfigStore()
     private val installer = InstallService(privileges)
     private val configWriter = ConfigWriter(privileges)
-    private val uninstaller = UninstallService(privileges)
+    private val uninstaller = UninstallService(privileges, tgProxy)
     private val passwordless = PasswordlessControl(privileges)
 
     var state by mutableStateOf(UiState())
@@ -94,7 +102,11 @@ class AppViewModel(private val scope: CoroutineScope) {
 
     fun toggle() {
         if (!state.installed) return install()
-        if (state.running) operation("Остановка") { service.stop() } else operation("Запуск") { service.start() }
+        if (state.running) {
+            operation("Остановка") { orchestrator.stopAll() }
+        } else {
+            operation("Запуск") { orchestrator.startAll() }
+        }
     }
 
     fun install() {
@@ -107,10 +119,28 @@ class AppViewModel(private val scope: CoroutineScope) {
             state = state.copy(notice = Notice("Сначала установите инструменты разработчика (Xcode CLT).", isError = true))
             return
         }
-        operation("Установка") { installer.install { step -> state = state.copy(busy = step) } }
+        operation("Установка") {
+            val installed = installer.install { step -> state = state.copy(busy = step) }
+            if (!installed.ok) return@operation installed
+            val tg = tgStore.read()
+            if (!tg.enabled) return@operation installed
+            val tgStart = tgProxy.start(tg)
+            if (tgStart.ok) installed else tgStart
+        }
     }
 
-    fun applyConfig(config: ZapretConfig) = operation("Применение настроек") { configWriter.apply(config) }
+    fun applyConfig(config: ZapretConfig, tgConfig: TgWsProxyConfig) = operation("Применение настроек") {
+        TgWsProxyValidation.requireValid(tgConfig)
+        val zapretResult = configWriter.apply(config)
+        if (!zapretResult.ok) return@operation zapretResult
+        orchestrator.applyTg(tgConfig)
+    }
+
+    fun restartTgProxy() = operation("Перезапуск TG proxy") {
+        val config = tgStore.read()
+        if (!config.enabled) return@operation CommandResult(1, "TG proxy выключен в настройках")
+        tgProxy.restart(config)
+    }
 
     fun uninstall(what: UninstallScope) = operation("Удаление") {
         uninstaller.uninstall(what).also { if (it.ok) exitProcess(0) }
@@ -138,6 +168,7 @@ class AppViewModel(private val scope: CoroutineScope) {
         state = state.copy(
             installed = ZapretPaths.isInstalled,
             config = configStore.read() ?: state.config,
+            tgConfig = runCatching { tgStore.read() }.getOrDefault(state.tgConfig),
             passwordless = passwordlessOn,
             prerequisites = Prerequisites.probe(passwordlessOn),
         )
@@ -156,7 +187,11 @@ class AppViewModel(private val scope: CoroutineScope) {
         state = state.copy(busy = label, notice = null)
         scope.launch {
             val outcome = runCatching { withContext(Dispatchers.IO) { block() } }
-            val status = withContext(Dispatchers.IO) { runCatching { service.status() }.getOrDefault(DaemonStatus()) }
+            val status = withContext(Dispatchers.IO) {
+                runCatching {
+                    CombinedStatus(service.status(), tgProxy.isRunning())
+                }.getOrDefault(CombinedStatus())
+            }
             state = state.withStatus(status).copy(busy = null, notice = outcome.toNotice(label))
             reload()
         }

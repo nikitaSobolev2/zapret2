@@ -45,6 +45,8 @@ import zapret.ui.theme.Palette
 fun Section(
     title: String,
     description: String? = null,
+    creditLabel: String? = null,
+    onCreditClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(Modifier.fillMaxWidth()) {
@@ -54,6 +56,16 @@ fun Section(
             color = Palette.textMuted,
             modifier = Modifier.padding(start = Dimens.xs, bottom = Dimens.xs),
         )
+        if (creditLabel != null && onCreditClick != null) {
+            Text(
+                text = creditLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = Palette.accent,
+                modifier = Modifier
+                    .padding(start = Dimens.xs, bottom = Dimens.xs)
+                    .clickable(onClick = onCreditClick),
+            )
+        }
         if (description != null) {
             Text(
                 text = description,

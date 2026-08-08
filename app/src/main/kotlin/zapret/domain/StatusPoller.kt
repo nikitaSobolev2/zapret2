@@ -17,7 +17,8 @@ import kotlin.time.Duration.Companion.seconds
  * slows down in the background to cut shell/`pgrep` chatter.
  */
 class StatusPoller(
-    private val service: ZapretService,
+    private val zapret: ZapretService,
+    private val tgProxy: TgWsProxyService,
     private val activePeriod: Duration = 2.seconds,
     private val idlePeriod: Duration = 15.seconds,
 ) {
@@ -28,11 +29,16 @@ class StatusPoller(
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun statuses(): Flow<DaemonStatus> = attentive
+    fun statuses(): Flow<CombinedStatus> = attentive
         .flatMapLatest { on ->
             flow {
                 while (true) {
-                    emit(service.status())
+                    emit(
+                        CombinedStatus(
+                            zapret = zapret.status(),
+                            tgRunning = tgProxy.isRunning(),
+                        ),
+                    )
                     delay(if (on) activePeriod else idlePeriod)
                 }
             }

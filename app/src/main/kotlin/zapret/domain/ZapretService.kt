@@ -12,11 +12,11 @@ data class DaemonStatus(
 }
 
 /** Drives the zapret2 init script and reads daemon state without asking for a password. */
-class ZapretService(private val privileges: PrivilegeRunner) {
+class ZapretService(private val privileges: PrivilegeRunner) : ZapretControl {
 
-    fun start(): CommandResult = init("start")
-    fun stop(): CommandResult = init("stop")
-    fun restart(): CommandResult = init("restart")
+    override fun start(): CommandResult = init("start")
+    override fun stop(): CommandResult = init("stop")
+    override fun restart(): CommandResult = init("restart")
 
     /**
      * Runs an init action as root. Tries the passwordless sudo rule first (see [PasswordlessControl]);
@@ -35,7 +35,7 @@ class ZapretService(private val privileges: PrivilegeRunner) {
     private fun CommandResult.needsPassword(): Boolean =
         output.contains("a password is required") || output.contains("a terminal is required")
 
-    fun status(): DaemonStatus {
+    override fun status(): DaemonStatus {
         val transparent = pidOf(ZapretPaths.transparentPidFile.absolutePath)
         val socks = pidOf(ZapretPaths.socksPidFile.absolutePath)
         return DaemonStatus(

@@ -163,8 +163,17 @@ private fun PanelContent(model: AppViewModel) {
             }
         }
 
+        if (ui.tgConfig.enabled) {
+            TextButton(
+                onClick = model::restartTgProxy,
+                enabled = ui.busy == null,
+            ) {
+                Text("Перезапустить TG proxy", color = Palette.accent)
+            }
+        }
+
         Spacer(Modifier.weight(1f))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = { model.openWindow(Screen.HOME) }) {
                 Text("Открыть окно", color = Palette.accent)
             }
@@ -178,6 +187,8 @@ private fun PanelContent(model: AppViewModel) {
 private fun zapret.ui.UiState.panelStatus(): String = when {
     busy != null -> busy
     !installed -> "Не установлен"
+    running && tgConfig.enabled && tgRunning -> "Zapret + TG"
+    running && tgConfig.enabled -> "Zapret · TG стоп"
     running -> "Работает"
     else -> "Остановлено"
 }

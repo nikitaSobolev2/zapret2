@@ -1,3 +1,21 @@
+Автор оригинального **zapret2**: [bol-van](https://github.com/bol-van/zapret2)
+([github.com/bol-van/zapret2](https://github.com/bol-van/zapret2)).
+
+Этот репозиторий — macOS-сборка и приложение управления поверх upstream zapret2.
+
+### Что сделано в этой сборке
+
+- Исправлен кривой запуск на macOS.
+- Zapret нормально работает рядом с VPN, в том числе с корпоративным (split-tunnel: PF вешается
+  на физический WAN вроде `en0`, трафик туннеля не ломается).
+- UI на Kotlin (Compose): настройки, меню-бар, обычное окно приложения.
+- Починен Discord — и десктопное приложение, и сайт.
+- Встроен фикс для **Telegram Desktop**: локальный [tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy)
+  от [Flowseal](https://github.com/Flowseal/tg-ws-proxy) (MTProto → WebSocket). Запускается вместе с
+  Zapret; в настройках можно открыть `tg://` или скопировать ссылку. Сайт `web.telegram.org` этим
+  не чинится, если провайдер режет IP Telegram целиком.
+- Можно пользоваться без UI: установка и start/stop из консоли — те же фиксы остаются в `/opt/zapret2`.
+
 ## English
 
 [Manual](manual.en.md) · [macOS app](macos-app.md)
@@ -19,18 +37,25 @@
 
 ### Установка
 
-Нужны: macOS 12+, инструменты разработчика (Xcode CLT) для первой сборки `tpws`, пароль администратора при
-установке и старте.
+Нужны: macOS 12+, инструменты разработчика (Xcode CLT) для первой сборки `tpws` (в DMG из релизов
+`tpws` уже собран), пароль администратора при установке и старте.
 
-**Вариант A — Homebrew (приложение)**
+**Рекомендуется — Homebrew (установка и обновления)**
 
 ```bash
 brew tap nikitaSobolev2/zapret2 https://github.com/nikitaSobolev2/zapret2
 brew install --cask zapret
 ```
 
-Обновление: `brew upgrade --cask zapret`. Удаление cask: `brew uninstall --cask zapret`
-(само `/opt/zapret2` лучше снять из приложения: Настройки → Удалить → «Приложение и zapret2»).
+Обновление тем же способом:
+
+```bash
+brew update
+brew upgrade --cask zapret
+```
+
+Удаление cask: `brew uninstall --cask zapret`
+(дерево `/opt/zapret2` лучше снять из приложения: Настройки → Удалить → «Приложение и zapret2»).
 
 **Вариант B — DMG с Releases**
 
@@ -55,6 +80,33 @@ cd zapret2
 3. При необходимости включите в Настройках «Вкл/выкл без пароля» (один раз), задайте стратегию / фильтр / `IFACE_WAN`.
 4. Статус и быстрый start/stop — из иконки в меню-баре.
 5. Удаление: Настройки → «Удалить…» → только приложение или приложение вместе с zapret2.
+
+#### Telegram Desktop — обход через MTProto → WSS
+
+Если **приложение Telegram** не подключается (а сайт/другие сервисы через Zapret уже работают),
+включите встроенный **[tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy)** —
+локальный MTProto-прокси на `127.0.0.1` → WebSocket к датацентрам Telegram.
+
+Автор проекта: **[Flowseal](https://github.com/Flowseal/tg-ws-proxy)** (MIT). В Zapret
+встроена headless-часть; UI и управление — в приложении Zapret.
+
+Это **не VPN**. Помогает **Telegram Desktop**. Не чинит `web.telegram.org` / `telegram.org`,
+если провайдер режет IP Telegram на уровне TCP (нет SYN-ACK) — тогда нужен туннель/VPN.
+
+**Как включить**
+
+1. Запустите Zapret и убедитесь, что на главной статус «Работает» (кнопка питания).
+2. Откройте **Настройки → Telegram MTProto proxy**.
+3. Переключатель **«Включён с Zapret»** должен быть включён (по умолчанию так и есть).
+4. Примените настройки при необходимости («Применить и перезапустить»).
+5. Нажмите **«Открыть в Telegram»** — откроется ссылка `tg://proxy?…` и Desktop предложит
+   добавить прокси (как в оригинальном TG WS Proxy).
+6. Если автооткрытие не сработало: **«Копировать tg:// proxy»** → вставьте ссылку в чат
+   Telegram с собой → нажмите по ней, либо добавьте прокси вручную:
+   Настройки → Дополнительно → Тип соединения → Использовать прокси → MTProto.
+
+Кнопка питания Zapret стартует и останавливает **и** tpws, **и** TG-прокси вместе.
+Конфиг и логи: `~/Library/Application Support/Zapret/tg-ws-proxy/`.
 
 Подробнее: [macos-app.md](macos-app.md).
 

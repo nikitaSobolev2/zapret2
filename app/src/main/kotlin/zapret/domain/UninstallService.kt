@@ -9,9 +9,13 @@ enum class UninstallScope(val label: String) {
 }
 
 /** Removes the app and, when asked, zapret2 itself. */
-class UninstallService(private val privileges: PrivilegeRunner) {
+class UninstallService(
+    private val privileges: PrivilegeRunner,
+    private val tgProxy: TgWsProxyService = TgWsProxyService(),
+) {
 
     fun uninstall(scope: UninstallScope): CommandResult {
+        tgProxy.stop()
         val zapret = when (scope) {
             UninstallScope.APP_ONLY -> CommandResult(0, "")
             UninstallScope.APP_AND_ZAPRET -> removeZapret()
