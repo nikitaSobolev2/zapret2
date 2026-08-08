@@ -57,12 +57,22 @@ brew upgrade --cask zapret
 Удаление cask: `brew uninstall --cask zapret`
 (дерево `/opt/zapret2` лучше снять из приложения: Настройки → Удалить → «Приложение и zapret2»).
 
+**Снять карантин Gatekeeper (после brew или DMG)**
+
+Сборка не нотаризована — macOS может блокировать запуск. Снимите флаг карантина:
+
+```bash
+xattr -cr /Applications/Zapret.app
+```
+
+Либо первый раз откройте через ПКМ → «Открыть».
+
 **Вариант B — DMG с Releases**
 
 1. Скачайте `Zapret-<version>.dmg` с [последнего релиза](https://github.com/nikitaSobolev2/zapret2/releases/latest)
    (тот же тег `vX.Y.Z`, что и остальные архивы).
 2. Перетащите `Zapret.app` в «Программы».
-3. Первый запуск (сборка не нотаризована): ПКМ → «Открыть», или `xattr -cr /Applications/Zapret.app`.
+3. Выполните `xattr -cr /Applications/Zapret.app` (см. выше) и запустите приложение.
 
 **Вариант C — клон репозитория**
 
