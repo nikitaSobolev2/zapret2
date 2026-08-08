@@ -75,7 +75,6 @@ fun MenuBarPanel(model: AppViewModel) {
             }
         },
     ) {
-        // dismiss when the panel loses focus (click outside); grace period so open is not cancelled
         LaunchedEffect(Unit) {
             delay(350)
             while (model.panelVisible) {
@@ -145,19 +144,27 @@ private fun PanelContent(model: AppViewModel) {
             modifier = Modifier.size(88.dp),
         )
         Spacer(Modifier.height(Dimens.sm))
-        Text(
-            text = when {
-                ui.busy != null -> ui.busy
-                !ui.installed -> "Установить"
-                ui.running -> "Нажмите, чтобы остановить"
-                else -> "Нажмите, чтобы запустить"
-            },
-            style = MaterialTheme.typography.labelSmall,
-            color = Palette.textMuted,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            if (!ui.installed) {
+                TextButton(onClick = model::install, enabled = ui.busy == null) {
+                    Text("Установить", color = Palette.accent)
+                }
+            } else if (ui.running) {
+                TextButton(onClick = model::toggle, enabled = ui.busy == null) {
+                    Text("Выключить", color = Palette.danger)
+                }
+            } else {
+                TextButton(onClick = model::toggle, enabled = ui.busy == null) {
+                    Text("Включить", color = Palette.accent)
+                }
+            }
+        }
 
         Spacer(Modifier.weight(1f))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = { model.openWindow(Screen.HOME) }) {
                 Text("Открыть окно", color = Palette.accent)
             }

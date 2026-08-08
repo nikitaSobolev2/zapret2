@@ -27,6 +27,26 @@ fun ApplicationScope.TrayMenu(model: AppViewModel) {
         menu = {
             Item(text = state.trayStatus(), enabled = false, onClick = {})
             Separator()
+            if (!state.installed) {
+                Item(
+                    text = "Установить",
+                    enabled = state.busy == null,
+                    onClick = model::install,
+                )
+            } else if (state.running) {
+                Item(
+                    text = "Выключить",
+                    enabled = state.busy == null,
+                    onClick = model::toggle,
+                )
+            } else {
+                Item(
+                    text = "Включить",
+                    enabled = state.busy == null,
+                    onClick = model::toggle,
+                )
+            }
+            Separator()
             Item(text = "Открыть окно", onClick = { model.openWindow(Screen.HOME) })
             Item(text = "Настройки", onClick = { model.openWindow(Screen.SETTINGS) })
             Separator()
