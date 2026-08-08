@@ -7,7 +7,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-/** Geometric sans for everything, Menlo for the raw tpws strategy text. */
+/** Geometric sans for everything, Menlo for raw strategy / list text. */
 @OptIn(ExperimentalTextApi::class)
 object Fonts {
     val display: FontFamily = FontFamily("Avenir Next")

@@ -5,10 +5,10 @@ import kotlin.time.Duration.Companion.minutes
 
 enum class UninstallScope(val label: String) {
     APP_ONLY("Только приложение"),
-    APP_AND_ZAPRET("Приложение и zapret2"),
+    APP_AND_ZAPRET("Приложение и движок zapret"),
 }
 
-/** Removes the app and, when asked, zapret2 itself. */
+/** Removes the app and, when asked, the utunws system install (+ legacy /opt/zapret2). */
 class UninstallService(
     private val privileges: PrivilegeRunner,
     private val tgProxy: TgWsProxyService = TgWsProxyService(),
@@ -18,7 +18,7 @@ class UninstallService(
         tgProxy.stop()
         val zapret = when (scope) {
             UninstallScope.APP_ONLY -> CommandResult(0, "")
-            UninstallScope.APP_AND_ZAPRET -> removeZapret()
+            UninstallScope.APP_AND_ZAPRET -> removeEngine()
         }
         if (!zapret.ok) return zapret
 
@@ -26,13 +26,15 @@ class UninstallService(
         return trash(bundle)
     }
 
-    private fun removeZapret(): CommandResult = privileges.runScriptFile(
-        BundledScript.extract("uninstall.sh"),
-        args = listOf(ZapretPaths.base.absolutePath),
-        timeout = 3.minutes,
-    )
+    private fun removeEngine(): CommandResult {
+        val script = sequenceOf(
+            ZapretPaths.uninstallScript,
+            ZapretPaths.enginePayload()?.resolve("uninstall.sh"),
+        ).firstOrNull { it != null && it.isFile } ?: return CommandResult(1, "uninstall.sh not found")
 
-    /** Finder puts the bundle in the trash, so an accidental uninstall is recoverable. */
+        return EnginePrivileged.runScriptText(privileges, script, timeout = 3.minutes)
+    }
+
     private fun trash(bundle: File): CommandResult = Shell.run(
         "/usr/bin/osascript",
         "-e", "on run argv",

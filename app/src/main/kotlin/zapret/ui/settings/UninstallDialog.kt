@@ -22,8 +22,9 @@ fun UninstallDialog(onChoose: (UninstallScope) -> Unit, onDismiss: () -> Unit) {
         title = { Text("Удаление", color = Palette.text) },
         text = {
             Text(
-                text = "«Только приложение» оставит zapret2 установленным и работающим. " +
-                    "«Приложение и zapret2» снимет правила PF, уберёт автозапуск и удалит /opt/zapret2.",
+                text = "«Только приложение» оставит движок utunws работающим. " +
+                    "«Приложение и движок» остановит LaunchDaemon, снимет PF, удалит " +
+                    "/Library/Application Support/Zapret и остатки /opt/zapret2.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Palette.textMuted,
             )

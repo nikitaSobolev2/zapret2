@@ -35,19 +35,19 @@ fun PrerequisitesCard(
             verticalArrangement = Arrangement.spacedBy(Dimens.sm),
         ) {
             Text("Готовность", style = MaterialTheme.typography.titleMedium, color = Palette.text)
-            CheckLine("Исходники zapret2", prerequisites.hasSources)
+            CheckLine("Пакет двигателя", prerequisites.hasSources)
             CheckLine(
-                label = "Готовый tpws",
+                label = "Готовый utunws",
                 ok = prerequisites.hasPrebuiltBinary,
-                detail = if (prerequisites.hasPrebuiltBinary) "в пакете" else "будет собран при установке",
+                detail = if (prerequisites.hasPrebuiltBinary) "в пакете" else "нужна пересборка приложения",
             )
             CheckLine(
                 label = "Инструменты сборки (Xcode CLT)",
                 ok = prerequisites.hasCompiler || prerequisites.hasPrebuiltBinary,
                 detail = when {
-                    prerequisites.hasPrebuiltBinary -> "не нужны"
+                    prerequisites.hasPrebuiltBinary -> "не нужны для установки"
                     prerequisites.hasCompiler -> null
-                    else -> "нужны для сборки"
+                    else -> "нужны для сборки DMG"
                 },
             )
             CheckLine(
@@ -56,9 +56,13 @@ fun PrerequisitesCard(
                 detail = prerequisites.wanInterface ?: "не найден",
             )
             CheckLine(
-                label = "zapret2 установлен",
+                label = "Движок установлен",
                 ok = prerequisites.zapretInstalled,
-                detail = if (prerequisites.zapretInstalled) "/opt/zapret2" else "нажмите кнопку питания",
+                detail = if (prerequisites.zapretInstalled) {
+                    "/Library/Application Support/Zapret"
+                } else {
+                    "нажмите кнопку питания"
+                },
             )
             CheckLine(
                 label = "Вкл/выкл без пароля",
@@ -73,16 +77,9 @@ fun PrerequisitesCard(
             }
             if (!prerequisites.hasSources) {
                 Text(
-                    text = "Переустановите приложение из DMG — внутри должны быть исходники.",
+                    text = "Переустановите приложение из DMG — внутри должен быть пакет engine.",
                     style = MaterialTheme.typography.labelSmall,
                     color = Palette.danger,
-                )
-            }
-            if (!prerequisites.passwordlessControl) {
-                Text(
-                    text = "Права администратора спросят при установке и каждом start/stop, пока не включите «без пароля».",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Palette.textMuted,
                 )
             }
         }

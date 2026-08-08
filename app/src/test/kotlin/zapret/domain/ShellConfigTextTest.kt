@@ -2,7 +2,6 @@ package zapret.domain
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.seconds
 
@@ -96,41 +95,12 @@ class ShellConfigTextTest {
     }
 
     @Test
-    fun configValidationRejectsBadPortsAndIface() {
+    fun configValidationAcceptsDefaultStrategy() {
         assertEquals(null, ConfigValidation.errorMessage(ZapretConfig()))
         assertEquals(
             true,
-            ConfigValidation.errorMessage(ZapretConfig(ifaceWan = "utun0"))?.contains("IFACE_WAN") == true,
+            ConfigValidation.errorMessage(ZapretConfig(strategyId = "../evil"))?.contains("Стратегия") == true,
         )
-        assertEquals(
-            true,
-            ConfigValidation.errorMessage(ZapretConfig(tpwsPort = "0"))?.contains("TPPORT") == true,
-        )
-        assertEquals(
-            true,
-            ConfigValidation.errorMessage(ZapretConfig(tpwsPorts = "80;443"))?.contains("TPWS_PORTS") == true,
-        )
-        assertEquals(
-            true,
-            ConfigValidation.errorMessage(ZapretConfig(tpwsOpt = "ok\u0000bad"))?.contains("TPWS_OPT") == true,
-        )
-    }
-
-    @Test
-    fun configValidationRejectsBadListsReload() {
-        assertFailsWith<InstallFailed> {
-            ConfigValidation.requireValidExtras(mapOf(ZapretConfig.LISTS_RELOAD to "/tmp/evil"))
-        }
-    }
-
-    @Test
-    fun envSourceOverrideIgnoredWhenPackaged() {
-        assertEquals(
-            "/tmp/evil",
-            ZapretPaths.envSourceOverride("/tmp/evil", packaged = false)?.path,
-        )
-        assertNull(ZapretPaths.envSourceOverride("/tmp/evil", packaged = true))
-        assertNull(ZapretPaths.envSourceOverride(null, packaged = false))
     }
 
     @Test
@@ -148,9 +118,9 @@ class ShellConfigTextTest {
     }
 
     @Test
-    fun prerequisitesNotReadyToInstallWithoutCompilerOrPrebuilt() {
+    fun prerequisitesNotReadyToInstallWithoutPrebuilt() {
         val blocked = Prerequisites(
-            hasCompiler = false,
+            hasCompiler = true,
             hasSources = true,
             hasPrebuiltBinary = false,
             passwordlessControl = false,
@@ -181,14 +151,11 @@ class ShellConfigTextTest {
             1,
             """
             successfully loaded PF anchors
-            zapret2: no connectivity after applying PF. rolling back.
-            zapret2: a VPN/tunnel on the default route can conflict with the transparent redirect.
-            Stopping daemon 1: /opt/zapret2/tpws/tpws (PID=1)
+            zapret: utunws did not stay running
+            zapret: gateway ARP missing
+            Stopping daemon
             """.trimIndent(),
         )
-        assertEquals(
-            "zapret2: a VPN/tunnel on the default route can conflict with the transparent redirect.",
-            result.lastLine(),
-        )
+        assertEquals("zapret: gateway ARP missing", result.lastLine())
     }
 }

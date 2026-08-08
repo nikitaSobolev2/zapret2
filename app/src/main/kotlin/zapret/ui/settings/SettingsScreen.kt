@@ -16,7 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
-import zapret.domain.FilterMode
+import zapret.domain.EngineListsStore
+import zapret.domain.IpsetMode
+import zapret.domain.StrategyEntry
 import zapret.domain.TgWsProxyConfig
 import zapret.domain.UninstallScope
 import zapret.domain.ZapretConfig
@@ -34,7 +36,7 @@ import zapret.ui.theme.Palette
 @Composable
 fun SettingsScreen(
     state: UiState,
-    onApply: (ZapretConfig, TgWsProxyConfig) -> Unit,
+    onApply: (ZapretConfig, TgWsProxyConfig, Map<String, String>) -> Unit,
     onInstall: () -> Unit,
     onUninstall: (UninstallScope) -> Unit,
     onPasswordless: (Boolean) -> Unit,
@@ -45,58 +47,82 @@ fun SettingsScreen(
 ) {
     var draft by remember(state.config) { mutableStateOf(state.config) }
     var tgDraft by remember(state.tgConfig) { mutableStateOf(state.tgConfig) }
+    var lists by remember(state.listContents) { mutableStateOf(state.listContents) }
+    var selectedList by remember { mutableStateOf(EngineListsStore.LIST_FILES.first()) }
     var askUninstall by remember { mutableStateOf(false) }
     var linkCopied by remember { mutableStateOf(false) }
     var linkOpened by remember { mutableStateOf(false) }
     val editable = state.busy == null
+    val strategies = state.strategies.ifEmpty {
+        listOf(StrategyEntry(ZapretConfig.DEFAULT_STRATEGY, ZapretConfig.DEFAULT_STRATEGY))
+    }
 
     Column(mod.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Dimens.xl)) {
         Text("Настройки", style = MaterialTheme.typography.headlineSmall, color = Palette.text)
 
         Section(
-            title = "Прозрачный режим",
-            description = "Системный обход DPI: PF перенаправляет выбранные порты в tpws.",
+            title = "Анти-DPI (utunws)",
+            creditLabel = "стратегии · Flowseal / bol-van",
+            onCreditClick = { openUrl("https://github.com/Flowseal/zapret-discord-youtube") },
+            description = "Пакетный обход DPI (fake/QUIC/Discord UDP) через utun + BPF. " +
+                "Нужен физический WAN и ARP к шлюзу. Корпоративный VPN — только split-tunnel.",
         ) {
-            SwitchRow(
-                label = "Включён",
-                checked = draft.tpwsEnable,
-                onChange = { draft = draft.copy(tpwsEnable = it) },
-                description = "Прозрачный обход DPI для портов ниже",
-            )
-            ValueField("Порт tpws", draft.tpwsPort, onChange = { draft = draft.copy(tpwsPort = it) })
-            ValueField(
-                label = "Перенаправляемые порты",
-                value = draft.tpwsPorts,
-                onChange = { draft = draft.copy(tpwsPorts = it) },
-            )
-            ValueField(
-                label = "Стратегия",
-                value = draft.tpwsOpt,
-                onChange = { draft = draft.copy(tpwsOpt = it) },
-                singleLine = false,
-                textStyle = MonoStyle,
-                minHeight = 132.dp,
-            )
+            Text("Стратегия", style = MaterialTheme.typography.labelLarge, color = Palette.textMuted)
+            strategies.forEach { entry ->
+                ChoiceRow(
+                    label = entry.title,
+                    selected = draft.strategyId == entry.id,
+                    onSelect = { draft = draft.copy(strategyId = entry.id) },
+                    description = entry.id,
+                )
+            }
+            Spacer(Modifier.height(Dimens.sm))
+            Text("IP-список", style = MaterialTheme.typography.labelLarge, color = Palette.textMuted)
+            IpsetMode.entries.forEach { mode ->
+                ChoiceRow(
+                    label = mode.label,
+                    selected = draft.ipsetMode == mode,
+                    onSelect = { draft = draft.copy(ipsetMode = mode) },
+                )
+            }
         }
 
         Section(
-            title = "SOCKS-прокси",
-            description = "Локальный прокси для приложений, которые умеют SOCKS сами.",
+            title = "Списки доменов и IP",
+            description = "Файлы в ~/Library/Application Support/Zapret/lists. " +
+                "Редактируйте и нажмите «Применить». Reset вернёт значения из пакета.",
         ) {
-            SwitchRow(
-                label = "Включён",
-                checked = draft.socksEnable,
-                onChange = { draft = draft.copy(socksEnable = it) },
-                description = "Локальный SOCKS для приложений вручную",
-            )
-            ValueField("Порт SOCKS", draft.socksPort, onChange = { draft = draft.copy(socksPort = it) })
+            EngineListsStore.LIST_FILES.forEach { name ->
+                ChoiceRow(
+                    label = EngineListsStore.LIST_LABELS[name] ?: name,
+                    selected = selectedList == name,
+                    onSelect = { selectedList = name },
+                )
+            }
             ValueField(
-                label = "Стратегия SOCKS",
-                value = draft.socksOpt,
-                onChange = { draft = draft.copy(socksOpt = it) },
+                label = EngineListsStore.LIST_LABELS[selectedList] ?: selectedList,
+                value = lists[selectedList].orEmpty(),
+                onChange = { lists = lists + (selectedList to it) },
                 singleLine = false,
                 textStyle = MonoStyle,
-                minHeight = 110.dp,
+                minHeight = 160.dp,
+            )
+            AccentButton(
+                text = "Сбросить выбранный список",
+                enabled = editable,
+                onClick = {
+                    val defaults = state.defaultListContents[selectedList]
+                    if (defaults != null) {
+                        lists = lists + (selectedList to defaults)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            AccentButton(
+                text = "Сбросить все списки к пакету",
+                enabled = editable,
+                onClick = { lists = state.defaultListContents },
+                modifier = Modifier.fillMaxWidth(),
             )
         }
 
@@ -104,9 +130,8 @@ fun SettingsScreen(
             title = "Telegram MTProto proxy",
             creditLabel = "tg-ws-proxy · автор Flowseal",
             onCreditClick = { openUrl("https://github.com/Flowseal/tg-ws-proxy") },
-            description = "Локальный мост для Telegram Desktop (MTProto → WSS), " +
-                "на базе проекта Flowseal. Запускается вместе с Zapret. " +
-                "Не открывает web.telegram.org при IP-блокировке.",
+            description = "Локальный мост для Telegram Desktop (MTProto → WSS). " +
+                "Запускается вместе с Zapret. Не открывает web.telegram.org при IP-блокировке.",
         ) {
             SwitchRow(
                 label = "Включён с Zapret",
@@ -144,40 +169,6 @@ fun SettingsScreen(
                 label = "Cloudflare fallback",
                 checked = tgDraft.cfproxy,
                 onChange = { tgDraft = tgDraft.copy(cfproxy = it) },
-                description = "Запасной путь через CF-прокси",
-            )
-            ValueField(
-                label = "CF user domains (по строке)",
-                value = tgDraft.cfproxyUserDomains.joinToString("\n"),
-                onChange = {
-                    tgDraft = tgDraft.copy(
-                        cfproxyUserDomains = it.lineSequence().map { line -> line.trim() }
-                            .filter { line -> line.isNotEmpty() }.toList(),
-                    )
-                },
-                singleLine = false,
-                textStyle = MonoStyle,
-                minHeight = 56.dp,
-            )
-            ValueField(
-                label = "CF worker domains (по строке)",
-                value = tgDraft.cfproxyWorkerDomains.joinToString("\n"),
-                onChange = {
-                    tgDraft = tgDraft.copy(
-                        cfproxyWorkerDomains = it.lineSequence().map { line -> line.trim() }
-                            .filter { line -> line.isNotEmpty() }.toList(),
-                    )
-                },
-                singleLine = false,
-                textStyle = MonoStyle,
-                minHeight = 56.dp,
-            )
-            ValueField("buf_kb", tgDraft.bufKb, onChange = { tgDraft = tgDraft.copy(bufKb = it) })
-            ValueField("pool_size", tgDraft.poolSize, onChange = { tgDraft = tgDraft.copy(poolSize = it) })
-            SwitchRow(
-                label = "Verbose log",
-                checked = tgDraft.verbose,
-                onChange = { tgDraft = tgDraft.copy(verbose = it) },
             )
             AccentButton(
                 text = if (linkCopied) "Ссылка скопирована" else "Копировать tg:// proxy",
@@ -197,66 +188,6 @@ fun SettingsScreen(
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
-            Text(
-                text = "«Открыть в Telegram» применяет прокси через tg:// (как в TG WS Proxy). " +
-                    "Если не сработало — скопируйте ссылку и откройте вручную.",
-                style = MaterialTheme.typography.bodySmall,
-                color = Palette.textMuted,
-            )
-        }
-
-        Section(
-            title = "Фильтрация трафика",
-            description = "Какой трафик обрабатывать: всё, списки IP/доменов или автосписок.",
-        ) {
-            ChoiceRow(
-                label = FilterMode.NONE.label,
-                selected = draft.filterMode == FilterMode.NONE,
-                onSelect = { draft = draft.copy(filterMode = FilterMode.NONE) },
-                description = "Обрабатывать весь подходящий трафик",
-            )
-            ChoiceRow(
-                label = FilterMode.IPSET.label,
-                selected = draft.filterMode == FilterMode.IPSET,
-                onSelect = { draft = draft.copy(filterMode = FilterMode.IPSET) },
-                description = "Только адреса из ipset-списков",
-            )
-            ChoiceRow(
-                label = FilterMode.HOSTLIST.label,
-                selected = draft.filterMode == FilterMode.HOSTLIST,
-                onSelect = { draft = draft.copy(filterMode = FilterMode.HOSTLIST) },
-                description = "Только домены из списков хостов",
-            )
-            ChoiceRow(
-                label = FilterMode.AUTOHOSTLIST.label,
-                selected = draft.filterMode == FilterMode.AUTOHOSTLIST,
-                onSelect = { draft = draft.copy(filterMode = FilterMode.AUTOHOSTLIST) },
-                description = "Автоматически пополнять список доменов",
-            )
-        }
-
-        Section(
-            title = "Сеть и брандмауэр",
-            description = "Интерфейс WAN ограничивает PF физическим линком — VPN (L2TP/utun) остаётся в стороне.",
-        ) {
-            SwitchRow(
-                label = "Не работать с IPv6",
-                checked = draft.disableIpv6,
-                onChange = { draft = draft.copy(disableIpv6 = it) },
-                description = "Не трогать IPv6-трафик",
-            )
-            SwitchRow(
-                label = "Применять правила PF",
-                checked = draft.applyFirewall,
-                onChange = { draft = draft.copy(applyFirewall = it) },
-                description = "Правила PF для перенаправления портов",
-            )
-            ValueField(
-                label = "Интерфейс WAN",
-                value = draft.ifaceWan,
-                onChange = { draft = draft.copy(ifaceWan = it) },
-                description = "Обычно en0. Пусто = авто. Нужен для совместной работы с корпоративным VPN.",
-            )
         }
 
         Section(title = "Права") {
@@ -264,20 +195,18 @@ fun SettingsScreen(
                 label = "Вкл/выкл без пароля",
                 checked = state.passwordless,
                 onChange = onPasswordless,
-                description = "sudo без пароля только для start/stop/restart. Включение спросит пароль один раз.",
+                description = "sudo без пароля для stop/start (restart.sh). Первая установка движка всё ещё спросит пароль.",
             )
         }
 
         Section(
             title = "Обновления",
-            description = "Текущая версия приложения: ${state.appVersion}. " +
-                "Обновления скачиваются с GitHub Releases (тот же DMG, что и для Homebrew).",
+            description = "Текущая версия: ${state.appVersion}. DMG с GitHub Releases.",
         ) {
             SwitchRow(
                 label = "Автообновление",
                 checked = state.autoUpdate,
                 onChange = onAutoUpdate,
-                description = "При запуске проверять и устанавливать новую версию",
             )
             AccentButton(
                 text = "Проверить обновления",
@@ -286,11 +215,7 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
             state.updateAvailable?.let { info ->
-                Text(
-                    text = "Доступна версия ${info.version}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Palette.accent,
-                )
+                Text("Доступна версия ${info.version}", color = Palette.accent)
                 AccentButton(
                     text = "Обновить сейчас",
                     enabled = editable && !state.showUpdateModal,
@@ -298,25 +223,17 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            if (state.updateUpToDate && state.updateAvailable == null) {
-                Text(
-                    text = "Обновлений нет",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Palette.textMuted,
-                )
-            }
         }
 
-        if (state.installed) {
+        AccentButton(
+            text = if (state.installed) "Применить и перезапустить" else "Сохранить настройки",
+            enabled = editable,
+            onClick = { onApply(draft, tgDraft, lists) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (!state.installed) {
             AccentButton(
-                text = "Применить и перезапустить",
-                enabled = editable,
-                onClick = { onApply(draft, tgDraft) },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        } else {
-            AccentButton(
-                text = "Установить zapret2",
+                text = "Установить движок",
                 enabled = editable,
                 onClick = onInstall,
                 modifier = Modifier.fillMaxWidth(),
@@ -344,20 +261,14 @@ fun SettingsScreen(
 }
 
 private fun copyToClipboard(text: String) {
-    val clipboard = Toolkit.getDefaultToolkit().systemClipboard
-    clipboard.setContents(StringSelection(text), null)
+    Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
 }
 
-/** Same as upstream macOS tray: `open tg://proxy…`, clipboard fallback if open fails. */
 private fun openInTelegram(url: String) {
-    val opened = openUrl(url)
-    if (!opened) copyToClipboard(url)
+    if (!openUrl(url)) copyToClipboard(url)
 }
 
 private fun openUrl(url: String): Boolean =
     runCatching {
-        ProcessBuilder("/usr/bin/open", url)
-            .redirectErrorStream(true)
-            .start()
-            .waitFor() == 0
+        ProcessBuilder("/usr/bin/open", url).redirectErrorStream(true).start().waitFor() == 0
     }.getOrDefault(false)

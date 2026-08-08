@@ -1,6 +1,4 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 
 plugins {
     kotlin("jvm") version "2.3.21"
@@ -52,20 +50,32 @@ dependencies {
     testImplementation(kotlin("test"))
 }
 
-// Packaged app carries zapret2 sources plus prebuilt universal mac binaries (make mac).
 val zapretSourceRoot: File = rootDir.parentFile
-val zapretStaged = layout.buildDirectory.dir("appResources/common/zapret2-src")
+val engineRoot = zapretSourceRoot.resolve("engine")
+val engineStaged = layout.buildDirectory.dir("appResources/common/engine")
 
-val stageZapretSource = tasks.register<Sync>("stageZapretSource") {
-    // Previous make leaves relative symlinks; Sync cannot replace those in-place.
-    doFirst { delete(zapretStaged) }
-    from(zapretSourceRoot) {
-        exclude(".git", ".github", ".cursor", "app", "docs", "nfq2", "tmp", "third_party")
-        exclude("**/.DS_Store", "**/.gradle/**")
-        // Always rebuild inside the stage dir; do not copy a host binaries/ tree.
-        exclude("binaries")
+val stageEnginePayload = tasks.register<Sync>("stageEnginePayload") {
+    doFirst { delete(engineStaged) }
+    from(engineRoot.resolve("payload")) {
+        exclude("**/.DS_Store")
     }
-    into(zapretStaged)
+    into(engineStaged)
+}
+
+val buildUtunws = tasks.register<Exec>("buildUtunws") {
+    dependsOn(stageEnginePayload)
+    val dest = engineStaged.map { it.asFile.resolve("bin/utunws") }
+    inputs.dir(engineRoot.resolve("nfq"))
+    outputs.file(dest)
+    commandLine(
+        engineRoot.resolve("build_utunws.sh").absolutePath,
+        dest.get().absolutePath,
+    )
+    doLast {
+        val binary = dest.get()
+        check(binary.isFile) { "utunws missing at $binary" }
+        binary.setExecutable(true, false)
+    }
 }
 
 val tgWsProxyRoot = zapretSourceRoot.resolve("third_party/tg-ws-proxy")
@@ -84,27 +94,8 @@ val buildTgWsProxySidecar = tasks.register<Exec>("buildTgWsProxySidecar") {
     }
 }
 
-val buildStagedZapret = tasks.register<Exec>("buildStagedZapret") {
-    dependsOn(stageZapretSource)
-    doFirst { workingDir = zapretStaged.get().asFile }
-    commandLine("make", "mac")
-    doLast {
-        // make mac links tpws/ → binaries/my/; jpackage ad-hoc codesign and Sync dislike that.
-        val root = zapretStaged.get().asFile.toPath()
-        Files.walk(root).use { paths ->
-            paths.filter { Files.isSymbolicLink(it) }.forEach { link ->
-                val target = link.toRealPath()
-                Files.delete(link)
-                Files.copy(target, link, StandardCopyOption.COPY_ATTRIBUTES)
-                link.toFile().setExecutable(true, false)
-            }
-        }
-    }
-}
-
-// the Compose plugin collects appResourcesRootDir in this task, so the sources must be staged first
 tasks.matching { it.name == "prepareAppResources" }.configureEach {
-    dependsOn(buildStagedZapret, buildTgWsProxySidecar)
+    dependsOn(buildUtunws, buildTgWsProxySidecar)
 }
 
 compose.desktop {
@@ -115,7 +106,7 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg)
             packageName = "Zapret"
             packageVersion = project.version.toString()
-            description = "Управление zapret2 на macOS"
+            description = "Управление zapret на macOS (utunws)"
             appResourcesRootDir.set(layout.buildDirectory.dir("appResources"))
 
             macOS {

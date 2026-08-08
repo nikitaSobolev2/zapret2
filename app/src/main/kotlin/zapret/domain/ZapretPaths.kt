@@ -2,57 +2,69 @@ package zapret.domain
 
 import java.io.File
 
-/** Filesystem layout of an installed zapret2 plus discovery of the sources the app installs from. */
+/** Filesystem layout for the utunws engine and discovery of the bundled payload. */
 object ZapretPaths {
 
-    val base = File("/opt/zapret2")
-    val initScript = File(base, "init.d/macos/zapret2")
-    val config = File(base, "config")
-    val configDefault = File(base, "config.default")
-    val plist = File(base, "init.d/macos/zapret2.plist")
-    val launchDaemon = File("/Library/LaunchDaemons/zapret2.plist")
-    val tpws = File(base, "tpws/tpws")
+    const val DAEMON_LABEL = "org.zapret.macos.engine"
+    const val PF_ANCHOR = "com.apple/zapret"
 
-    /** Pidfile names come from `pidfile_of_daemon` in init.d/macos/functions. */
-    val transparentPidFile = File("/var/run/tpws_1.pid")
-    val socksPidFile = File("/var/run/tpws_2.pid")
+    val systemRoot = File("/Library/Application Support/Zapret")
+    val launchDaemon = File("/Library/LaunchDaemons/$DAEMON_LABEL.plist")
+    val utunws = File(systemRoot, "bin/utunws")
+    val stopScript = File(systemRoot, "stop.sh")
+    val restartScript = File(systemRoot, "restart.sh")
+    val installScript = File(systemRoot, "install.sh")
+    val uninstallScript = File(systemRoot, "uninstall.sh")
 
-    val isInstalled: Boolean get() = initScript.canExecute() && config.isFile
+    val userDataRoot: File
+        get() = File(
+            System.getProperty("user.home"),
+            "Library/Application Support/Zapret",
+        )
+
+    val selectedStrategyFile: File get() = File(userDataRoot, "selected-strategy")
+    val ipsetModeFile: File get() = File(userDataRoot, "ipset-mode")
+    val listsDir: File get() = File(userDataRoot, "lists")
+
+    val isInstalled: Boolean
+        get() = utunws.canExecute() && launchDaemon.isFile
+
+    fun isValidUserDataRoot(path: File): Boolean {
+        val home = System.getProperty("user.home") ?: return false
+        val expected = File(home, "Library/Application Support/Zapret").canonicalFile
+        return path.canonicalFile == expected
+    }
 
     /**
-     * The zapret2 tree to install from: an explicit override (dev only), the copy bundled
-     * into the .app, or the repository this app lives in when running from Gradle.
+     * Bundled engine payload (strategies, lists, scripts, and prebuilt utunws):
+     * packaged app resources, or `engine/payload` next to the repo when running from Gradle.
      */
-    fun sourceTree(): File? = sequenceOf(
-        envSourceOverride(System.getenv("ZAPRET_SRC"), packaged = bundledResources() != null),
-        bundledResources()?.let { File(it, "zapret2-src") },
-        repositoryRoot(),
-    ).filterNotNull().firstOrNull(::isZapretTree)
+    fun enginePayload(): File? = sequenceOf(
+        bundledResources()?.let { File(it, "engine") },
+        repositoryEnginePayload(),
+    ).filterNotNull().firstOrNull(::isEnginePayload)
 
-    /**
-     * `ZAPRET_SRC` is ignored in a packaged .app so a hostile environment cannot redirect
-     * the install source away from the sealed bundle tree.
-     */
-    fun envSourceOverride(env: String?, packaged: Boolean): File? =
-        env?.takeUnless { packaged }?.let(::File)
+    fun hasPrebuiltUtunws(payload: File): Boolean =
+        File(payload, "bin/utunws").canExecute()
 
-    fun isZapretTree(dir: File): Boolean =
-        File(dir, "init.d/macos/zapret2").isFile && File(dir, "Makefile").isFile
+    fun isEnginePayload(dir: File): Boolean =
+        File(dir, "run.sh").isFile &&
+            File(dir, "strategies.tsv").isFile &&
+            File(dir, "default-lists").isDirectory
 
-    /** True when the tree already has a mac `tpws` binary (packaged DMG or prior `make mac`). */
-    fun hasPrebuiltTpws(dir: File): Boolean =
-        File(dir, "tpws/tpws").canExecute() || File(dir, "binaries/my/tpws").canExecute()
-
-    /** Set by the Compose packaging when the app runs from a bundle. */
-    private fun bundledResources(): File? =
-        System.getProperty("compose.application.resources.dir")?.let(::File)?.takeIf { it.isDirectory }
-
-    private fun repositoryRoot(): File? =
-        generateSequence(File("").absoluteFile) { it.parentFile }.firstOrNull(::isZapretTree)
-
-    /** The .app the process runs from, if any. Used by the uninstaller to remove itself. */
     fun appBundle(): File? {
         val start = bundledResources() ?: return null
         return generateSequence(start) { it.parentFile }.firstOrNull { it.name.endsWith(".app") }
+    }
+
+    private fun bundledResources(): File? =
+        System.getProperty("compose.application.resources.dir")?.let(::File)?.takeIf { it.isDirectory }
+
+    private fun repositoryEnginePayload(): File? {
+        val cwd = File("").absoluteFile
+        return generateSequence(cwd) { it.parentFile }.map { File(it, "engine/payload") }
+            .firstOrNull(::isEnginePayload)
+            ?: generateSequence(cwd) { it.parentFile }.map { File(it, "payload") }
+                .firstOrNull(::isEnginePayload)
     }
 }

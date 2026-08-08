@@ -27,10 +27,11 @@ object TgWsProxyPaths {
         return candidate.takeIf { it.canExecute() }
     }
 
-    /** Dev fallback: `third_party/tg-ws-proxy` next to the zapret2 tree. */
+    /** Dev fallback: `third_party/tg-ws-proxy` under the repo root. */
     fun sourcePackageRoot(): File? {
-        val zapret = ZapretPaths.sourceTree() ?: return null
-        val root = File(zapret, "third_party/tg-ws-proxy")
-        return root.takeIf { File(root, "proxy/tg_ws_proxy.py").isFile }
+        val cwd = File("").absoluteFile
+        return generateSequence(cwd) { it.parentFile }
+            .map { File(it, "third_party/tg-ws-proxy") }
+            .firstOrNull { File(it, "proxy/tg_ws_proxy.py").isFile }
     }
 }

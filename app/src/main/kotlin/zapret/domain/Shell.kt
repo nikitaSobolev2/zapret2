@@ -9,12 +9,12 @@ data class CommandResult(val exitCode: Int, val output: String) {
     val ok: Boolean get() = exitCode == 0
 
     /**
-     * One-line summary for the UI. Prefers `zapret2:` diagnostics (rollback / VPN conflict)
+     * One-line summary for the UI. Prefers `zapret:` / `zapret2:` diagnostics
      * over incidental lines like "Stopping daemon…".
      */
     fun lastLine(): String {
         val lines = output.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
-        return lines.lastOrNull { it.startsWith("zapret2:") }
+        return lines.lastOrNull { it.startsWith("zapret:") || it.startsWith("zapret2:") }
             ?: lines.lastOrNull()
             ?: ""
     }

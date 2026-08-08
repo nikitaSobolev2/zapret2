@@ -1,35 +1,32 @@
 package zapret.domain
 
-/** Installs an edited config over the root owned one and restarts zapret2 so it takes effect. */
+/** Persists strategy/ipset mode (+ optional list drafts) and restarts the engine if running. */
 class ConfigWriter(
     private val privileges: PrivilegeRunner,
-    private val store: ConfigStore = ConfigStore(),
+    private val lists: EngineListsStore = EngineListsStore(),
+    private val service: ZapretControl = ZapretService(privileges, lists),
 ) {
 
-    fun apply(config: ZapretConfig): CommandResult {
-        // empty WAN means "auto" : pin the physical iface so a split-tunnel VPN on utun is left alone
-        val resolved = config.copy(ifaceWan = config.ifaceWan.ifBlank { WanInterface.detect().orEmpty() })
-        ConfigValidation.requireValid(resolved)
-        val text = store.edited(resolved) ?: throw InstallFailed("zapret2 не установлен")
-        val draft = SecureTemp.file("zapret-config-", ".sh").apply { writeText(text) }
-        return try {
-            privileges.runScript(
-                SCRIPT,
-                args = listOf(draft.absolutePath, ZapretPaths.config.absolutePath, ZapretPaths.initScript.absolutePath),
-            )
-        } finally {
-            draft.delete()
+    fun apply(config: ZapretConfig, listDrafts: Map<String, String> = emptyMap()): CommandResult {
+        if (!StrategyCatalog.isValidId(config.strategyId)) {
+            throw InstallFailed("Некорректная стратегия: ${config.strategyId}")
         }
-    }
-
-    private companion object {
-        val SCRIPT = """
-            #!/bin/sh
-            set -e
-            PATH="/usr/sbin:/sbin:/usr/bin:/bin"
-            export PATH
-            install -m 644 -o root -g wheel "${'$'}1" "${'$'}2"
-            "${'$'}3" restart
-        """.trimIndent()
+        lists.ensureSeeded()
+        lists.writeConfig(config)
+        for ((name, text) in listDrafts) {
+            if (name in EngineListsStore.LIST_FILES) {
+                lists.writeList(name, text)
+            }
+        }
+        if (!ZapretPaths.isInstalled) {
+            return CommandResult(0, "config saved")
+        }
+        val restart = ZapretPaths.restartScript
+        if (!restart.canExecute()) {
+            return service.start()
+        }
+        val sudo = Shell.run("/usr/bin/sudo", "-n", restart.absolutePath)
+        if (sudo.ok || !sudo.output.contains("a password is required")) return sudo
+        return EnginePrivileged.runScriptText(privileges, restart)
     }
 }

@@ -6,6 +6,9 @@ nfq2/nfqws2
 nfq2/winws2.exe
 nfq2/WinDivert*
 tpws/tpws
+engine/nfq/utunws
+engine/nfq/utunwsa
+engine/nfq/utunwsx
 binaries/my/
 ipset/zapret-ip*.txt
 ipset/zapret-ip*.gz

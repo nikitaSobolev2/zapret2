@@ -68,9 +68,10 @@ fun HomeScreen(
         Spacer(Modifier.height(Dimens.md))
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Dimens.sm + Dimens.xs / 2)) {
             val open = { onOpen(Screen.SETTINGS) }
-            InfoCard("Режим фильтра", state.config.filterMode.label, onClick = open)
-            InfoCard("Порты", "${state.config.tpwsPorts} → ${state.config.tpwsPort}", onClick = open)
-            InfoCard("Стратегия", state.strategyPreview(), onClick = open)
+            val strategyTitle = state.strategies.firstOrNull { it.id == state.config.strategyId }?.title
+                ?: state.config.strategyId
+            InfoCard("Стратегия", strategyTitle, onClick = open)
+            InfoCard("IP-список", state.config.ipsetMode.label, onClick = open)
             InfoCard("Telegram proxy", state.tgStatusLine(), onClick = open)
         }
     }
@@ -117,9 +118,11 @@ private fun UiState.headline(): String = when {
 }
 
 private fun UiState.subline(): String = when {
-    !installed -> "Нажмите кнопку, чтобы собрать и установить zapret2"
+    !installed -> "Нажмите кнопку, чтобы установить utunws"
     running -> buildString {
-        append("tpws :${config.tpwsPort} · ${config.filterMode.label}")
+        append(config.strategyId)
+        append(" · ")
+        append(config.ipsetMode.value)
         if (tgConfig.enabled) {
             append(" · TG ")
             append(if (tgRunning) ":${tgConfig.port}" else "выкл")
@@ -127,9 +130,6 @@ private fun UiState.subline(): String = when {
     }
     else -> "Нажмите кнопку, чтобы включить обход"
 }
-
-private fun UiState.strategyPreview(): String =
-    config.tpwsOpt.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() } ?: "не задана"
 
 private fun UiState.tgStatusLine(): String = when {
     !tgConfig.enabled -> "выключен в настройках"

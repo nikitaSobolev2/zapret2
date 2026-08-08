@@ -2,9 +2,6 @@ package zapret.domain
 
 import kotlin.time.Duration.Companion.seconds
 
-/**
- * Machine readiness the app needs before install/start. Probe only — never prompts for a password.
- */
 data class Prerequisites(
     val hasCompiler: Boolean,
     val hasSources: Boolean,
@@ -13,12 +10,10 @@ data class Prerequisites(
     val wanInterface: String?,
     val zapretInstalled: Boolean,
 ) {
-    /** Packaged apps ship tpws; otherwise Xcode CLT is required to compile on install. */
-    val canInstall: Boolean get() = hasSources && (hasPrebuiltBinary || hasCompiler)
+    val canInstall: Boolean get() = hasSources && hasPrebuiltBinary
 
-    val canStart: Boolean get() = zapretInstalled
+    val canStart: Boolean get() = zapretInstalled || canInstall
 
-    /** True when nothing blocks the user from installing or running. */
     val isReady: Boolean get() = when {
         zapretInstalled -> wanInterface != null
         else -> canInstall
@@ -26,11 +21,11 @@ data class Prerequisites(
 
     companion object {
         fun probe(passwordless: Boolean): Prerequisites {
-            val sources = ZapretPaths.sourceTree()
+            val payload = ZapretPaths.enginePayload()
             return Prerequisites(
                 hasCompiler = compilerPresent(),
-                hasSources = sources != null,
-                hasPrebuiltBinary = sources?.let(ZapretPaths::hasPrebuiltTpws) == true,
+                hasSources = payload != null,
+                hasPrebuiltBinary = payload?.let(ZapretPaths::hasPrebuiltUtunws) == true,
                 passwordlessControl = passwordless,
                 wanInterface = WanInterface.detect(),
                 zapretInstalled = ZapretPaths.isInstalled,

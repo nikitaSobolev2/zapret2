@@ -1,6 +1,7 @@
 package zapret.domain
 
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 data class DaemonStatus(
@@ -11,43 +12,71 @@ data class DaemonStatus(
     val running: Boolean get() = transparent || socks
 }
 
-/** Drives the zapret2 init script and reads daemon state without asking for a password. */
-class ZapretService(private val privileges: PrivilegeRunner) : ZapretControl {
+/** Starts/stops the LaunchDaemon-backed utunws engine. */
+class ZapretService(
+    private val privileges: PrivilegeRunner,
+    private val lists: EngineListsStore = EngineListsStore(),
+) : ZapretControl {
 
-    override fun start(): CommandResult = init("start")
-    override fun stop(): CommandResult = init("stop")
-    override fun restart(): CommandResult = init("restart")
-
-    /**
-     * Runs an init action as root. Tries the passwordless sudo rule first (see [PasswordlessControl]);
-     * only if that is not set up does it fall back to the osascript prompt.
-     */
-    private fun init(action: String): CommandResult {
-        val sudo = Shell.run(
-            "/usr/bin/sudo", "-n", ZapretPaths.initScript.absolutePath, action,
-            timeout = INIT_TIMEOUT,
-        )
-        if (sudo.ok || !sudo.needsPassword()) return sudo
-        return privileges.runScript(INIT_SCRIPT, args = listOf(ZapretPaths.initScript.absolutePath, action))
+    override fun start(): CommandResult {
+        // Already installed: kickstart via restart.sh (covered by NOPASSWD).
+        // Fresh install still needs admin once through install.sh.
+        if (ZapretPaths.isInstalled && ZapretPaths.restartScript.canExecute()) {
+            return runInstalled(ZapretPaths.restartScript)
+        }
+        return installOrKick()
     }
 
-    /** `sudo -n` prints this to stderr when the action is not covered by a NOPASSWD rule. */
+    override fun stop(): CommandResult {
+        val script = ZapretPaths.stopScript.takeIf { it.canExecute() }
+            ?: return CommandResult(0, "engine not installed")
+        return runInstalled(script)
+    }
+
+    override fun restart(): CommandResult {
+        val script = ZapretPaths.restartScript.takeIf { it.canExecute() }
+            ?: return installOrKick()
+        return runInstalled(script)
+    }
+
+    override fun status(): DaemonStatus {
+        val pid = pidOfUtunws()
+        return DaemonStatus(
+            transparent = pid != null,
+            socks = false,
+            uptime = pid?.let(::elapsed),
+        )
+    }
+
+    private fun installOrKick(): CommandResult {
+        lists.ensureSeeded()
+        val payload = ZapretPaths.enginePayload()
+            ?: return CommandResult(1, "engine payload not found; reinstall the app")
+        if (!ZapretPaths.hasPrebuiltUtunws(payload)) {
+            return CommandResult(1, "utunws binary missing in payload; rebuild the app")
+        }
+        if (!ZapretPaths.isValidUserDataRoot(ZapretPaths.userDataRoot)) {
+            return CommandResult(1, "invalid user data path")
+        }
+        return EnginePrivileged.install(
+            privileges = privileges,
+            payload = payload,
+            dataRoot = ZapretPaths.userDataRoot,
+            timeout = 3.minutes,
+        )
+    }
+
+    private fun runInstalled(script: java.io.File): CommandResult {
+        val sudo = Shell.run("/usr/bin/sudo", "-n", script.absolutePath, timeout = INIT_TIMEOUT)
+        if (sudo.ok || !sudo.needsPassword()) return sudo
+        return EnginePrivileged.runScriptText(privileges, script, timeout = INIT_TIMEOUT)
+    }
+
     private fun CommandResult.needsPassword(): Boolean =
         output.contains("a password is required") || output.contains("a terminal is required")
 
-    override fun status(): DaemonStatus {
-        val transparent = pidOf(ZapretPaths.transparentPidFile.absolutePath)
-        val socks = pidOf(ZapretPaths.socksPidFile.absolutePath)
-        return DaemonStatus(
-            transparent = transparent != null,
-            socks = socks != null,
-            uptime = (transparent ?: socks)?.let(::elapsed),
-        )
-    }
-
-    /** macOS has no /proc, so the daemon is matched by the pidfile it was told to write. */
-    private fun pidOf(pidFile: String): String? =
-        Shell.run("/usr/bin/pgrep", "-f", "pidfile=$pidFile", timeout = PROBE_TIMEOUT)
+    private fun pidOfUtunws(): String? =
+        Shell.run("/usr/bin/pgrep", "-x", "utunws", timeout = PROBE_TIMEOUT)
             .takeIf { it.ok }
             ?.output
             ?.lineSequence()
@@ -63,13 +92,6 @@ class ZapretService(private val privileges: PrivilegeRunner) : ZapretControl {
         private val PROBE_TIMEOUT = 5.seconds
         private val INIT_TIMEOUT = 90.seconds
 
-        /** Fallback path when passwordless sudo is not configured: run the init script via osascript. */
-        private val INIT_SCRIPT = """
-            #!/bin/sh
-            exec "${'$'}@"
-        """.trimIndent()
-
-        /** `ps -o etime=` prints [[dd-]hh:]mm:ss */
         fun parseElapsed(text: String): Duration? {
             val dash = text.indexOf('-')
             val days = if (dash < 0) 0L else text.substring(0, dash).toLongOrNull() ?: return null

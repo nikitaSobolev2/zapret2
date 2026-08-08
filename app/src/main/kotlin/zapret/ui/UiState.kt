@@ -3,6 +3,7 @@ package zapret.ui
 import zapret.domain.CombinedStatus
 import zapret.domain.DaemonStatus
 import zapret.domain.Prerequisites
+import zapret.domain.StrategyEntry
 import zapret.domain.TgWsProxyConfig
 import zapret.domain.UpdateInfo
 import zapret.domain.UpdatePhase
@@ -19,6 +20,9 @@ data class UiState(
     val status: DaemonStatus = DaemonStatus(),
     val tgRunning: Boolean = false,
     val config: ZapretConfig = ZapretConfig(),
+    val strategies: List<StrategyEntry> = emptyList(),
+    val listContents: Map<String, String> = emptyMap(),
+    val defaultListContents: Map<String, String> = emptyMap(),
     val tgConfig: TgWsProxyConfig = TgWsProxyConfig(),
     val screen: Screen = Screen.HOME,
     val busy: String? = null,

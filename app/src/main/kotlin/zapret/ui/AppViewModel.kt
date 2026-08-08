@@ -14,8 +14,8 @@ import zapret.domain.AppUpdateService
 import zapret.domain.AppVersion
 import zapret.domain.CombinedStatus
 import zapret.domain.CommandResult
-import zapret.domain.ConfigStore
 import zapret.domain.ConfigWriter
+import zapret.domain.EngineListsStore
 import zapret.domain.InstallService
 import zapret.domain.PasswordlessControl
 import zapret.domain.Prerequisites
@@ -23,6 +23,7 @@ import zapret.domain.PrivilegeEscalationCancelled
 import zapret.domain.PrivilegeRunner
 import zapret.domain.ServiceOrchestrator
 import zapret.domain.StatusPoller
+import zapret.domain.StrategyCatalog
 import zapret.domain.TgWsProxyConfig
 import zapret.domain.TgWsProxyService
 import zapret.domain.TgWsProxyStore
@@ -34,6 +35,7 @@ import zapret.domain.UpdatePhase
 import zapret.domain.ZapretConfig
 import zapret.domain.ZapretPaths
 import zapret.domain.ZapretService
+import java.io.File
 import kotlin.system.exitProcess
 
 /**
@@ -43,14 +45,14 @@ import kotlin.system.exitProcess
 class AppViewModel(private val scope: CoroutineScope) {
 
     private val privileges = PrivilegeRunner()
-    private val service = ZapretService(privileges)
+    private val listsStore = EngineListsStore()
+    private val service = ZapretService(privileges, listsStore)
     private val tgProxy = TgWsProxyService()
     private val tgStore = TgWsProxyStore()
     private val orchestrator = ServiceOrchestrator(service, tgProxy, tgStore)
     private val poller = StatusPoller(service, tgProxy)
-    private val configStore = ConfigStore()
-    private val installer = InstallService(privileges)
-    private val configWriter = ConfigWriter(privileges)
+    private val installer = InstallService(privileges, listsStore, service)
+    private val configWriter = ConfigWriter(privileges, listsStore, service)
     private val uninstaller = UninstallService(privileges, tgProxy)
     private val passwordless = PasswordlessControl(privileges)
     private val prefsStore = AppPrefsStore()
@@ -126,11 +128,11 @@ class AppViewModel(private val scope: CoroutineScope) {
     fun install() {
         val ready = state.prerequisites
         if (!ready.hasSources) {
-            state = state.copy(notice = Notice("Исходники zapret2 не найдены. Переустановите приложение из DMG.", isError = true))
+            state = state.copy(notice = Notice("Пакет двигателя не найден. Переустановите приложение из DMG.", isError = true))
             return
         }
         if (!ready.canInstall) {
-            state = state.copy(notice = Notice("Сначала установите инструменты разработчика (Xcode CLT).", isError = true))
+            state = state.copy(notice = Notice("В пакете нет utunws. Пересоберите приложение (Gradle packageDmg / run).", isError = true))
             return
         }
         operation("Установка") {
@@ -143,9 +145,13 @@ class AppViewModel(private val scope: CoroutineScope) {
         }
     }
 
-    fun applyConfig(config: ZapretConfig, tgConfig: TgWsProxyConfig) = operation("Применение настроек") {
+    fun applyConfig(
+        config: ZapretConfig,
+        tgConfig: TgWsProxyConfig,
+        listDrafts: Map<String, String> = emptyMap(),
+    ) = operation("Применение настроек") {
         TgWsProxyValidation.requireValid(tgConfig)
-        val zapretResult = configWriter.apply(config)
+        val zapretResult = configWriter.apply(config, listDrafts)
         if (!zapretResult.ok) return@operation zapretResult
         orchestrator.applyTg(tgConfig)
     }
@@ -354,9 +360,22 @@ class AppViewModel(private val scope: CoroutineScope) {
     private fun reload() {
         val passwordlessOn = runCatching { passwordless.isEnabled() }.getOrDefault(false)
         val prefs = runCatching { prefsStore.read() }.getOrDefault(AppPrefs())
+        runCatching { listsStore.ensureSeeded() }
+        val payload = ZapretPaths.enginePayload()
+        val strategies = StrategyCatalog.load(payload)
+        val listContents = EngineListsStore.LIST_FILES.associateWith { name ->
+            runCatching { listsStore.readList(name) }.getOrDefault("")
+        }
+        val defaultsDir = payload?.let { File(it, "default-lists") }
+        val defaultListContents = EngineListsStore.LIST_FILES.associateWith { name ->
+            defaultsDir?.let { File(it, name) }?.takeIf { it.isFile }?.readText().orEmpty()
+        }
         state = state.copy(
             installed = ZapretPaths.isInstalled,
-            config = configStore.read() ?: state.config,
+            config = runCatching { listsStore.readConfig() }.getOrDefault(state.config),
+            strategies = strategies,
+            listContents = listContents,
+            defaultListContents = defaultListContents,
             tgConfig = runCatching { tgStore.read() }.getOrDefault(state.tgConfig),
             passwordless = passwordlessOn,
             autoUpdate = prefs.autoUpdate,

@@ -1,61 +1,58 @@
 # Zapret macOS app
 
-Compose Desktop control app for zapret2: install, start/stop, settings, uninstall.
-Works with a split-tunnel corporate VPN when `IFACE_WAN` is the physical interface (usually `en0`).
+Compose Desktop control app for zapret on macOS. The DPI engine is **utunws** (Flowseal-style
+nfq packet desync over utun + BPF), not tpws. The app installs a LaunchDaemon, PF `route-to`
+rules, strategy profiles, and editable host/IP lists.
 
-Packaging runs `make mac` into the staged source tree, so the DMG ships a universal prebuilt
-`tpws` (plus `ip2net` / `mdig`). Install skips compile when that binary is present — Xcode CLT
-is only needed for source-only / Gradle-dev trees without a prior build.
+Credits: [bol-van/zapret](https://github.com/bol-van/zapret) (MIT core) and
+[Flowseal](https://github.com/Flowseal/zapret-discord-youtube) strategies/lists/macOS utun path.
+See [`engine/NOTICE.md`](../engine/NOTICE.md).
+
+### Engine packaging
+
+Gradle stages [`engine/payload`](../engine/payload) and builds universal `utunws` via
+[`engine/build_utunws.sh`](../engine/build_utunws.sh) into app resources (`engine/`).
+Install copies that payload to `/Library/Application Support/Zapret` and starts
+LaunchDaemon `org.zapret.macos.engine`.
+
+User state:
+
+- `~/Library/Application Support/Zapret/selected-strategy`
+- `~/Library/Application Support/Zapret/ipset-mode` (`none` | `loaded` | `any`)
+- `~/Library/Application Support/Zapret/lists/*` (editable in Settings; Reset restores package defaults)
+
+Requires a physical WAN with gateway ARP (Ethernet/Wi‑Fi). Use split-tunnel VPN only.
+PF divert is IPv4-only (same as upstream Flowseal macOS).
 
 The DMG also ships a headless **tg-ws-proxy** sidecar — vendored MIT code by
-**[Flowseal](https://github.com/Flowseal/tg-ws-proxy)**
-([github.com/Flowseal/tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy)) under
-`third_party/tg-ws-proxy/`. Gradle task `buildTgWsProxySidecar` builds it into app resources.
-The app (and the Homebrew cask `postflight`) restores the execute bit on the nested
-Mach-O if a DMG/Homebrew copy dropped it.
-The Compose app starts/stops it with Zapret (user process on `127.0.0.1:1443`, no sudo).
-Settings credit the author with a link to that repository.
+**[Flowseal](https://github.com/Flowseal/tg-ws-proxy)** under `third_party/tg-ws-proxy/`.
+Gradle task `buildTgWsProxySidecar` builds it into app resources. The app (and the Homebrew
+cask `postflight`) restores the execute bit on nested Mach-O if a DMG/Homebrew copy dropped it.
 
 ### In-app updates
 
-Settings → **Обновления**: toggle **Автообновление** (default on). When enabled, the app checks
-GitHub Releases on launch and, if a newer `Zapret-*.dmg` exists, downloads and replaces the
-`.app` (modal with **Отмена**). Manual **Проверить обновления** / **Обновить сейчас** work the
-same path. Prefs: `~/Library/Application Support/Zapret/app-prefs.json`. Same DMG as Homebrew
-(`vX.Y.Z` release assets). Unsigned builds may still need `xattr -cr` once after replace.
+Settings → **Обновления**: toggle **Автообновление** (default on). Prefs:
+`~/Library/Application Support/Zapret/app-prefs.json`. Same DMG as Homebrew (`vX.Y.Z` release assets).
+Unsigned builds may still need `xattr -cr` once after replace.
 
 ### Telegram Desktop fix
 
 1. Start Zapret (power button → status «Работает»).
-2. **Settings → Telegram MTProto proxy** (credit: Flowseal / tg-ws-proxy) — leave **«Включён с Zapret»** on.
-3. Click **«Открыть в Telegram»** (`open tg://proxy?…`, same as upstream TG WS Proxy tray).
-4. Fallback: **«Копировать tg:// proxy»** and open the link inside Telegram, or add an MTProto
-   proxy manually (Advanced → Connection type).
+2. **Settings → Telegram MTProto proxy** — leave **«Включён с Zapret»** on.
+3. Click **«Открыть в Telegram»**.
+4. Fallback: copy `tg://` link.
 
-Helps **Telegram Desktop** only. Does not fix `web.telegram.org` when the ISP blackholes Telegram
-IPs at TCP level. Config/logs: `~/Library/Application Support/Zapret/tg-ws-proxy/`.
+Helps **Telegram Desktop** only. Config/logs: `~/Library/Application Support/Zapret/tg-ws-proxy/`.
 
 ## Install with Homebrew
 
 ```bash
 brew tap nikitaSobolev2/zapret2 https://github.com/nikitaSobolev2/zapret2
 brew install --cask zapret
+brew update && brew upgrade --cask zapret
 ```
 
-Upgrade:
-
-```bash
-brew update
-brew upgrade --cask zapret
-```
-
-Uninstall app only (leaves `/opt/zapret2` unless you remove it from the app):
-
-```bash
-brew uninstall --cask zapret
-```
-
-First launch (unsigned build): right-click → Open, or:
+First launch (unsigned build):
 
 ```bash
 xattr -cr /Applications/Zapret.app
@@ -63,34 +60,23 @@ xattr -cr /Applications/Zapret.app
 
 ## Install from DMG
 
-1. Download `Zapret-<version>.dmg` from the latest GitHub release
-   (e.g. [v1.1.0](https://github.com/nikitaSobolev2/zapret2/releases/latest)).
-2. Open the DMG, drag `Zapret.app` to Applications.
-3. Launch and use the power button to install zapret2 (administrator password).
+1. Download `Zapret-<version>.dmg` from the GitHub release.
+2. Drag `Zapret.app` to Applications.
+3. Launch and use the power button (administrator password) to install the engine.
 
 ## Release checklist
 
 1. Tag `vX.Y.Z` and push the tag.
-2. Workflow **`build`** creates the GitHub Release and uploads source/binary archives.
-3. Workflow **`macOS app`** builds the DMG, attaches `Zapret-<version>.dmg` to the **same**
-   `vX.Y.Z` release, and bumps [`Casks/zapret.rb`](../Casks/zapret.rb) `version` / `sha256`.
-4. Homebrew URL shape:
-   `https://github.com/nikitaSobolev2/zapret2/releases/download/v<version>/Zapret-<version>.dmg`
-5. `workflow_dispatch` on `macOS app` only builds a CI artifact — it does **not** publish or bump the cask.
-
-Manual local DMG:
+2. Workflow **`build`** creates the GitHub Release (Linux archives).
+3. Workflow **`macOS app`** builds the DMG, attaches it to the same release, bumps the cask.
+4. `workflow_dispatch` on `macOS app` only builds a CI artifact — no publish/cask bump.
 
 ```bash
-make app-dmg
-# → app/build/compose/binaries/main/dmg/Zapret-<version>.dmg
+cd app && ./gradlew packageDmg -PappVersion=1.2.3
 ```
 
 ### Gatekeeper (unsigned builds)
 
-The DMG is not Apple-notarized. First launch may need right-click → Open, or:
-
 ```bash
 xattr -cr /Applications/Zapret.app
 ```
-
-Cask token: `zapret` (`Casks/zapret.rb`).

@@ -4,7 +4,7 @@ cask "zapret" do
 
   url "https://github.com/nikitaSobolev2/zapret2/releases/download/v#{version}/Zapret-#{version}.dmg"
   name "Zapret"
-  desc "macOS control app for zapret2 (DPI bypass via tpws + PF)"
+  desc "macOS control app for zapret (DPI bypass via utunws + PF)"
   homepage "https://github.com/nikitaSobolev2/zapret2"
 
   livecheck do
@@ -26,10 +26,14 @@ cask "zapret" do
 
   app "Zapret.app"
 
-  # Nested PyInstaller Mach-O often loses +x when the DMG is copied into /Applications.
+  # Nested Mach-O often loses +x when the DMG is copied into /Applications.
   postflight do
-    binary = "#{appdir}/Zapret.app/Contents/app/resources/tg-ws-proxy/tg-ws-proxy"
-    File.chmod(0o755, binary) if File.exist?(binary)
+    [
+      "#{appdir}/Zapret.app/Contents/app/resources/tg-ws-proxy/tg-ws-proxy",
+      "#{appdir}/Zapret.app/Contents/app/resources/engine/bin/utunws",
+    ].each do |binary|
+      File.chmod(0o755, binary) if File.exist?(binary)
+    end
   end
 
   zap trash: [
@@ -39,12 +43,15 @@ cask "zapret" do
   ]
 
   caveats <<~EOS
-    Zapret needs administrator rights to install and control zapret2 (/opt/zapret2, PF).
+    Zapret needs administrator rights to install utunws
+    (/Library/Application Support/Zapret, PF, LaunchDaemon).
 
     The app is not notarized. On first launch use right-click → Open, or:
       xattr -cr "#{appdir}/Zapret.app"
 
-    Keep a split-tunnel corporate VPN (do not send all traffic over VPN) so
-    transparent mode can bind to the physical WAN (usually en0).
+    Needs a physical WAN with gateway ARP. Keep corporate VPN in split-tunnel
+    mode (do not send all traffic over VPN).
+
+    Editable lists: ~/Library/Application Support/Zapret/lists/
   EOS
 end
