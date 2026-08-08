@@ -54,7 +54,7 @@ class AppViewModel(private val scope: CoroutineScope) {
     private val uninstaller = UninstallService(privileges, tgProxy)
     private val passwordless = PasswordlessControl(privileges)
     private val prefsStore = AppPrefsStore()
-    private val updater = AppUpdateService()
+    private val updater by lazy { AppUpdateService() }
 
     private var updateJob: Job? = null
 

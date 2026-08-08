@@ -1,13 +1,10 @@
 package zapret.domain
 
 import java.io.File
+import java.net.HttpURLConnection
 import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
-import java.time.Duration
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.seconds
 
@@ -27,12 +24,10 @@ enum class UpdatePhase {
 
 /**
  * Checks GitHub Releases for a newer Zapret-*.dmg and installs it over the running .app.
+ *
+ * Uses [HttpURLConnection] (java.base) — jpackage's trimmed runtime often omits java.net.http.
  */
 class AppUpdateService(
-    private val http: HttpClient = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(15))
-        .followRedirects(HttpClient.Redirect.NORMAL)
-        .build(),
     private val releasesUrl: String = RELEASES_LATEST,
 ) {
     private val cancelRequested = AtomicBoolean(false)
@@ -46,7 +41,7 @@ class AppUpdateService(
     }
 
     fun checkLatest(currentVersion: String = AppVersion.current()): Result<UpdateInfo?> = runCatching {
-        val body = get(releasesUrl)
+        val body = getText(releasesUrl)
         val info = parseLatestDmg(body) ?: return@runCatching null
         if (AppVersion.isNewer(info.version, currentVersion)) info else null
     }
@@ -54,29 +49,27 @@ class AppUpdateService(
     fun download(info: UpdateInfo, onProgress: (Long, Long?) -> Unit = { _, _ -> }): Result<File> = runCatching {
         clearCancel()
         val dest = File(AppPrefsPaths.cacheDir, info.assetName)
-        val request = HttpRequest.newBuilder(URI.create(info.downloadUrl))
-            .timeout(Duration.ofMinutes(10))
-            .header("User-Agent", USER_AGENT)
-            .GET()
-            .build()
-        val response = http.send(request, HttpResponse.BodyHandlers.ofInputStream())
-        if (response.statusCode() !in 200..299) {
-            error("HTTP ${response.statusCode()} downloading ${info.assetName}")
-        }
-        val total = response.headers().firstValueAsLong("Content-Length").orElse(-1L).takeIf { it > 0 }
-        response.body().use { input ->
-            dest.outputStream().use { output ->
-                val buffer = ByteArray(64 * 1024)
-                var readTotal = 0L
-                while (true) {
-                    if (cancelRequested.get()) error("cancelled")
-                    val n = input.read(buffer)
-                    if (n < 0) break
-                    output.write(buffer, 0, n)
-                    readTotal += n
-                    onProgress(readTotal, total)
+        val connection = open(info.downloadUrl, timeoutMs = 600_000)
+        try {
+            val code = connection.responseCode
+            if (code !in 200..299) error("HTTP $code downloading ${info.assetName}")
+            val total = connection.contentLengthLong.takeIf { it > 0 }
+            connection.inputStream.use { input ->
+                dest.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var readTotal = 0L
+                    while (true) {
+                        if (cancelRequested.get()) error("cancelled")
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        output.write(buffer, 0, n)
+                        readTotal += n
+                        onProgress(readTotal, total)
+                    }
                 }
             }
+        } finally {
+            connection.disconnect()
         }
         dest
     }
@@ -110,18 +103,26 @@ class AppUpdateService(
             Unit
         }
 
-    private fun get(url: String): String {
-        val request = HttpRequest.newBuilder(URI.create(url))
-            .timeout(Duration.ofSeconds(30))
-            .header("User-Agent", USER_AGENT)
-            .header("Accept", "application/vnd.github+json")
-            .GET()
-            .build()
-        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
-        if (response.statusCode() !in 200..299) {
-            error("HTTP ${response.statusCode()} from GitHub Releases")
+    private fun getText(url: String): String {
+        val connection = open(url, timeoutMs = 30_000)
+        try {
+            connection.setRequestProperty("Accept", "application/vnd.github+json")
+            val code = connection.responseCode
+            if (code !in 200..299) error("HTTP $code from GitHub Releases")
+            return connection.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            connection.disconnect()
         }
-        return response.body()
+    }
+
+    private fun open(url: String, timeoutMs: Int): HttpURLConnection {
+        val connection = URI.create(url).toURL().openConnection() as HttpURLConnection
+        connection.instanceFollowRedirects = true
+        connection.connectTimeout = 15_000
+        connection.readTimeout = timeoutMs
+        connection.setRequestProperty("User-Agent", USER_AGENT)
+        connection.requestMethod = "GET"
+        return connection
     }
 
     private fun mountDmg(dmg: File): File {
