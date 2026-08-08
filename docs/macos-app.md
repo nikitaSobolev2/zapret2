@@ -31,7 +31,7 @@ xattr -cr /Applications/Zapret.app
 
 ## Install from DMG
 
-1. Download [Zapret-1.0.0.dmg](https://github.com/nikitaSobolev2/zapret2/releases/download/MacOS/Zapret-1.0.0.dmg)
+1. Download [Zapret-1.0.1.dmg](https://github.com/nikitaSobolev2/zapret2/releases/download/MacOS/Zapret-1.0.1.dmg)
    (release tag [MacOS](https://github.com/nikitaSobolev2/zapret2/releases/tag/MacOS)).
 2. Open the DMG, drag `Zapret.app` to Applications.
 3. Launch and use the power button to install zapret2 (administrator password).

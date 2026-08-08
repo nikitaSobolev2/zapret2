@@ -34,7 +34,7 @@ brew install --cask zapret
 
 **Вариант B — DMG с Releases**
 
-1. Скачайте [Zapret-1.0.0.dmg](https://github.com/nikitaSobolev2/zapret2/releases/download/MacOS/Zapret-1.0.0.dmg)
+1. Скачайте [Zapret-1.0.1.dmg](https://github.com/nikitaSobolev2/zapret2/releases/download/MacOS/Zapret-1.0.1.dmg)
    (релиз [MacOS](https://github.com/nikitaSobolev2/zapret2/releases/tag/MacOS)).
 2. Перетащите `Zapret.app` в «Программы».
 3. Первый запуск (сборка не нотаризована): ПКМ → «Открыть», или `xattr -cr /Applications/Zapret.app`.
