@@ -31,17 +31,20 @@ xattr -cr /Applications/Zapret.app
 
 ## Install from DMG
 
-1. Download `Zapret-<version>.dmg` from [Releases](https://github.com/nikitaSobolev2/zapret2/releases).
+1. Download [Zapret-1.0.0.dmg](https://github.com/nikitaSobolev2/zapret2/releases/download/MacOS/Zapret-1.0.0.dmg)
+   (release tag [MacOS](https://github.com/nikitaSobolev2/zapret2/releases/tag/MacOS)).
 2. Open the DMG, drag `Zapret.app` to Applications.
 3. Launch and use the power button to install zapret2 (administrator password).
 
 ## Release / maintainers
 
-Tag a version and push — CI builds the DMG, attaches it to the GitHub Release, and updates [`Casks/zapret.rb`](../Casks/zapret.rb):
+Upload the DMG to the GitHub release tagged **`MacOS`** as `Zapret-<version>.dmg`, then bump
+`version` / `sha256` in [`Casks/zapret.rb`](../Casks/zapret.rb).
 
-```bash
-git tag v1.0.1
-git push origin v1.0.1
+URL pattern:
+
+```text
+https://github.com/nikitaSobolev2/zapret2/releases/download/MacOS/Zapret-<version>.dmg
 ```
 
 Manual local DMG:

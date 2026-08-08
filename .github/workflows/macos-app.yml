@@ -56,15 +56,20 @@ jobs:
           path: ${{ steps.dmg.outputs.path }}
           if-no-files-found: error
 
+      # Assets always land on the fixed release tag "MacOS" (not v1.0.0).
+      # Example: https://github.com/nikitaSobolev2/zapret2/releases/download/MacOS/Zapret-1.0.0.dmg
       - name: Publish GitHub Release asset
-        if: github.ref_type == 'tag'
+        if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: MacOS
+          name: Zapret macOS
           files: ${{ steps.dmg.outputs.path }}
           fail_on_unmatched_files: true
-          generate_release_notes: true
           body: |
             ### Zapret macOS ${{ steps.ver.outputs.version }}
+
+            DMG: https://github.com/nikitaSobolev2/zapret2/releases/download/MacOS/Zapret-${{ steps.ver.outputs.version }}.dmg
 
             Install with Homebrew:
             ```
@@ -72,10 +77,8 @@ jobs:
             brew install --cask zapret
             ```
 
-            Or open the DMG and drag `Zapret.app` to Applications.
-
       - name: Update Homebrew cask
-        if: github.ref_type == 'tag'
+        if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         env:
           VERSION: ${{ steps.ver.outputs.version }}
           SHA256: ${{ steps.dmg.outputs.sha256 }}
