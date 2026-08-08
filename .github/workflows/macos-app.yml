@@ -23,6 +23,12 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      # tg-ws-proxy sidecar (PyInstaller) for Telegram Desktop proxy
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: App version from tag
         id: ver
         run: |
@@ -62,10 +68,25 @@ jobs:
           path: ${{ steps.dmg.outputs.path }}
           if-no-files-found: error
 
-      # Assets always land on the fixed release tag "MacOS" (not v1.0.0).
-      # Example: https://github.com/nikitaSobolev2/zapret2/releases/download/MacOS/Zapret-1.0.0.dmg
       # Publish only from version tags. workflow_dispatch builds artifacts for testing only.
-      - name: Publish GitHub Release asset
+      # 1) Attach DMG to the same tag release as build.yml (v1.x.y) so it shows on that release page.
+      # 2) Also mirror to fixed tag "MacOS" for the Homebrew cask URL.
+      - name: Attach DMG to version release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: ${{ steps.dmg.outputs.path }}
+          fail_on_unmatched_files: true
+          # Do not overwrite the source-release notes from build.yml
+          append_body: true
+          body: |
+
+            ### Zapret macOS ${{ steps.ver.outputs.version }}
+
+            DMG: https://github.com/nikitaSobolev2/zapret2/releases/download/${{ github.ref_name }}/${{ steps.dmg.outputs.name }}
+
+      - name: Publish DMG on MacOS release (Homebrew)
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
@@ -77,6 +98,8 @@ jobs:
             ### Zapret macOS ${{ steps.ver.outputs.version }}
 
             DMG: https://github.com/nikitaSobolev2/zapret2/releases/download/MacOS/Zapret-${{ steps.ver.outputs.version }}.dmg
+
+            Also on the version release: https://github.com/nikitaSobolev2/zapret2/releases/tag/${{ github.ref_name }}
 
             Install with Homebrew:
             ```

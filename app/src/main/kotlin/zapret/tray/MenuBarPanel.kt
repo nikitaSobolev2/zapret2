@@ -173,7 +173,7 @@ private fun PanelContent(model: AppViewModel) {
         }
 
         Spacer(Modifier.weight(1f))
-        Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = { model.openWindow(Screen.HOME) }) {
                 Text("Открыть окно", color = Palette.accent)
             }
