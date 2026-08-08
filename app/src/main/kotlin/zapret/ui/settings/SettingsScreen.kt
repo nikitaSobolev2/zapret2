@@ -24,6 +24,7 @@ import zapret.ui.components.DangerButton
 import zapret.ui.components.Section
 import zapret.ui.components.SwitchRow
 import zapret.ui.components.ValueField
+import zapret.ui.theme.Dimens
 import zapret.ui.theme.MonoStyle
 import zapret.ui.theme.Palette
 
@@ -40,13 +41,25 @@ fun SettingsScreen(
     var askUninstall by remember { mutableStateOf(false) }
     val editable = state.busy == null
 
-    Column(mod.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+    Column(mod.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Dimens.xl)) {
         Text("Настройки", style = MaterialTheme.typography.headlineSmall, color = Palette.text)
 
-        Section("Прозрачный режим") {
-            SwitchRow("Включён", draft.tpwsEnable) { draft = draft.copy(tpwsEnable = it) }
+        Section(
+            title = "Прозрачный режим",
+            description = "Системный обход DPI: PF перенаправляет выбранные порты в tpws.",
+        ) {
+            SwitchRow(
+                label = "Включён",
+                checked = draft.tpwsEnable,
+                onChange = { draft = draft.copy(tpwsEnable = it) },
+                description = "Прозрачный обход DPI для портов ниже",
+            )
             ValueField("Порт tpws", draft.tpwsPort, onChange = { draft = draft.copy(tpwsPort = it) })
-            ValueField("Перенаправляемые порты", draft.tpwsPorts, onChange = { draft = draft.copy(tpwsPorts = it) })
+            ValueField(
+                label = "Перенаправляемые порты",
+                value = draft.tpwsPorts,
+                onChange = { draft = draft.copy(tpwsPorts = it) },
+            )
             ValueField(
                 label = "Стратегия",
                 value = draft.tpwsOpt,
@@ -57,8 +70,16 @@ fun SettingsScreen(
             )
         }
 
-        Section("SOCKS-прокси") {
-            SwitchRow("Включён", draft.socksEnable) { draft = draft.copy(socksEnable = it) }
+        Section(
+            title = "SOCKS-прокси",
+            description = "Локальный прокси для приложений, которые умеют SOCKS сами.",
+        ) {
+            SwitchRow(
+                label = "Включён",
+                checked = draft.socksEnable,
+                onChange = { draft = draft.copy(socksEnable = it) },
+                description = "Локальный SOCKS для приложений вручную",
+            )
             ValueField("Порт SOCKS", draft.socksPort, onChange = { draft = draft.copy(socksPort = it) })
             ValueField(
                 label = "Стратегия SOCKS",
@@ -70,35 +91,66 @@ fun SettingsScreen(
             )
         }
 
-        Section("Фильтрация трафика") {
-            FilterMode.entries.forEach { mode ->
-                ChoiceRow(mode.label, draft.filterMode == mode) { draft = draft.copy(filterMode = mode) }
-            }
+        Section(
+            title = "Фильтрация трафика",
+            description = "Какой трафик обрабатывать: всё, списки IP/доменов или автосписок.",
+        ) {
+            ChoiceRow(
+                label = FilterMode.NONE.label,
+                selected = draft.filterMode == FilterMode.NONE,
+                onSelect = { draft = draft.copy(filterMode = FilterMode.NONE) },
+                description = "Обрабатывать весь подходящий трафик",
+            )
+            ChoiceRow(
+                label = FilterMode.IPSET.label,
+                selected = draft.filterMode == FilterMode.IPSET,
+                onSelect = { draft = draft.copy(filterMode = FilterMode.IPSET) },
+                description = "Только адреса из ipset-списков",
+            )
+            ChoiceRow(
+                label = FilterMode.HOSTLIST.label,
+                selected = draft.filterMode == FilterMode.HOSTLIST,
+                onSelect = { draft = draft.copy(filterMode = FilterMode.HOSTLIST) },
+                description = "Только домены из списков хостов",
+            )
+            ChoiceRow(
+                label = FilterMode.AUTOHOSTLIST.label,
+                selected = draft.filterMode == FilterMode.AUTOHOSTLIST,
+                onSelect = { draft = draft.copy(filterMode = FilterMode.AUTOHOSTLIST) },
+                description = "Автоматически пополнять список доменов",
+            )
         }
 
-        Section("Сеть и брандмауэр") {
-            SwitchRow("Не работать с IPv6", draft.disableIpv6) { draft = draft.copy(disableIpv6 = it) }
-            SwitchRow("Применять правила PF", draft.applyFirewall) { draft = draft.copy(applyFirewall = it) }
+        Section(
+            title = "Сеть и брандмауэр",
+            description = "Интерфейс WAN ограничивает PF физическим линком — VPN (L2TP/utun) остаётся в стороне.",
+        ) {
+            SwitchRow(
+                label = "Не работать с IPv6",
+                checked = draft.disableIpv6,
+                onChange = { draft = draft.copy(disableIpv6 = it) },
+                description = "Не трогать IPv6-трафик",
+            )
+            SwitchRow(
+                label = "Применять правила PF",
+                checked = draft.applyFirewall,
+                onChange = { draft = draft.copy(applyFirewall = it) },
+                description = "Правила PF для перенаправления портов",
+            )
             ValueField(
                 label = "Интерфейс WAN",
                 value = draft.ifaceWan,
                 onChange = { draft = draft.copy(ifaceWan = it) },
-            )
-            Text(
-                text = "Физический интерфейс для обхода (обычно en0). " +
-                    "Пусто = авто. Нужен, чтобы корпоративный VPN (L2TP/utun) работал вместе с zapret.",
-                style = MaterialTheme.typography.labelSmall,
-                color = Palette.textMuted,
+                description = "Обычно en0. Пусто = авто. Нужен для совместной работы с корпоративным VPN.",
             )
         }
 
-        Section("Права") {
-            SwitchRow("Вкл/выкл без пароля", state.passwordless) { onPasswordless(it) }
-            Text(
-                text = "Разрешает запуск/остановку zapret2 через sudo без запроса пароля. " +
-                    "Настройка требует однократного ввода пароля администратора.",
-                style = MaterialTheme.typography.labelSmall,
-                color = Palette.textMuted,
+        Section(title = "Права") {
+            SwitchRow(
+                label = "Вкл/выкл без пароля",
+                checked = state.passwordless,
+                onChange = onPasswordless,
+                description = "sudo без пароля только для start/stop/restart. Включение спросит пароль один раз.",
             )
         }
 
@@ -124,7 +176,7 @@ fun SettingsScreen(
             onClick = { askUninstall = true },
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(Dimens.xs))
     }
 
     if (askUninstall) {

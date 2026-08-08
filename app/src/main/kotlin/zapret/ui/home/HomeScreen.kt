@@ -22,13 +22,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import zapret.ui.Screen
 import zapret.ui.UiState
 import zapret.ui.asTimer
 import zapret.ui.components.InfoCard
 import zapret.ui.theme.BrandStyle
+import zapret.ui.theme.Dimens
 import zapret.ui.theme.Palette
 import zapret.ui.theme.TimerStyle
 
@@ -45,15 +45,15 @@ fun HomeScreen(
     ) {
         Brand()
 
-        Spacer(Modifier.height(26.dp))
+        Spacer(Modifier.height(Dimens.xxl))
         Uptime(state)
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(Dimens.md))
 
         PowerButton(running = state.running, busy = state.busy != null, onClick = onToggle)
 
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(Dimens.lg))
         Text(state.headline(), style = MaterialTheme.typography.headlineSmall, color = Palette.text)
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(Dimens.sm - Dimens.xs / 2))
         Text(
             text = state.subline(),
             style = MaterialTheme.typography.bodyMedium,
@@ -61,8 +61,8 @@ fun HomeScreen(
             textAlign = TextAlign.Center,
         )
 
-        Spacer(Modifier.height(28.dp))
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Spacer(Modifier.height(Dimens.section))
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Dimens.sm + Dimens.xs / 2)) {
             val open = { onOpen(Screen.SETTINGS) }
             InfoCard("Режим фильтра", state.config.filterMode.label, onClick = open)
             InfoCard("Порты", "${state.config.tpwsPorts} → ${state.config.tpwsPort}", onClick = open)
@@ -74,7 +74,7 @@ fun HomeScreen(
 @Composable
 private fun Brand() {
     Text("ZAPRET", style = BrandStyle, color = Palette.text)
-    Spacer(Modifier.height(4.dp))
+    Spacer(Modifier.height(Dimens.xs))
     Text(
         text = "обход блокировок · macOS",
         style = MaterialTheme.typography.labelSmall,

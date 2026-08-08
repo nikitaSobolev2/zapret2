@@ -14,7 +14,7 @@ import zapret.ui.AppViewModel
 import zapret.ui.Screen
 import zapret.ui.theme.Palette
 
-/** Menu bar presence: the app lives here, the window is only a detail view. */
+/** Menu bar presence: left-click opens the panel, the native menu is the fallback. */
 @Composable
 fun ApplicationScope.TrayMenu(model: AppViewModel) {
     val state = model.state
@@ -23,20 +23,11 @@ fun ApplicationScope.TrayMenu(model: AppViewModel) {
     Tray(
         icon = icon,
         tooltip = "Zapret — ${state.trayStatus()}",
-        onAction = { model.openWindow(Screen.HOME) },
+        onAction = model::togglePanel,
         menu = {
             Item(text = state.trayStatus(), enabled = false, onClick = {})
             Separator()
             Item(text = "Открыть окно", onClick = { model.openWindow(Screen.HOME) })
-            if (state.installed) {
-                Item(
-                    text = if (state.running) "Остановить" else "Запустить",
-                    enabled = state.busy == null,
-                    onClick = model::toggle,
-                )
-            } else {
-                Item(text = "Установить zapret2", enabled = state.busy == null, onClick = model::install)
-            }
             Item(text = "Настройки", onClick = { model.openWindow(Screen.SETTINGS) })
             Separator()
             Item(text = "Закрыть полностью", onClick = ::exitApplication)

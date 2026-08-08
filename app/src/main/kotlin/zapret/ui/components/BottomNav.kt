@@ -6,6 +6,9 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,10 +26,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import zapret.ui.Screen
+import zapret.ui.theme.Dimens
 import zapret.ui.theme.Palette
 
 @Composable
@@ -34,11 +41,11 @@ fun BottomNav(current: Screen, onSelect: (Screen) -> Unit, mod: Modifier = Modif
     val tabs = listOf(Screen.HOME to "Главная", Screen.SETTINGS to "Настройки")
 
     Surface(
-        shape = RoundedCornerShape(26.dp),
+        shape = RoundedCornerShape(Dimens.radiusNav),
         color = Palette.surface,
         modifier = mod.fillMaxWidth(),
     ) {
-        BoxWithConstraints(Modifier.padding(6.dp).height(44.dp)) {
+        BoxWithConstraints(Modifier.padding(Dimens.sm - Dimens.xs / 2).height(Dimens.navHeight)) {
             val tabWidth = maxWidth / tabs.size
             val selected = tabs.indexOfFirst { it.first == current }.coerceAtLeast(0)
             val indicator by animateDpAsState(
@@ -76,9 +83,21 @@ private fun Tab(
     onClick: () -> Unit,
     mod: Modifier = Modifier,
 ) {
-    val tint by animateColorAsState(if (active) Palette.accent else Palette.textMuted)
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val tint by animateColorAsState(
+        when {
+            active -> Palette.accent
+            hovered -> Palette.text
+            else -> Palette.textMuted
+        },
+    )
     Row(
-        modifier = mod.clickable(onClick = onClick),
+        modifier = mod
+            .clip(RoundedCornerShape(20.dp))
+            .hoverable(interaction)
+            .background(if (!active && hovered) Palette.hover else Color.Transparent)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -86,7 +105,7 @@ private fun Tab(
             Screen.HOME -> HomeGlyph(tint)
             Screen.SETTINGS -> SettingsGlyph(tint)
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(Dimens.sm))
         Text(label, style = MaterialTheme.typography.labelLarge, color = tint)
     }
 }

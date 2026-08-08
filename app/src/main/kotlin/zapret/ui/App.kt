@@ -11,11 +11,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import zapret.ui.components.BottomNav
 import zapret.ui.components.NoticeBar
 import zapret.ui.home.HomeScreen
 import zapret.ui.settings.SettingsScreen
+import zapret.ui.theme.Dimens
 import zapret.ui.theme.ZapretTheme
 import zapret.ui.theme.appBackground
 
@@ -24,10 +24,10 @@ fun App(model: AppViewModel) = ZapretTheme {
     val state = model.state
 
     Box(Modifier.fillMaxSize().background(appBackground())) {
-        Column(Modifier.fillMaxSize().padding(horizontal = 22.dp)) {
+        Column(Modifier.fillMaxSize().padding(horizontal = Dimens.xl)) {
             Box(Modifier.weight(1f)) {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Spacer(Modifier.height(28.dp))
+                    Spacer(Modifier.height(Dimens.xxl))
                     when (state.screen) {
                         Screen.HOME -> HomeScreen(
                             state = state,
@@ -43,16 +43,16 @@ fun App(model: AppViewModel) = ZapretTheme {
                             onPasswordless = model::setPasswordless,
                         )
                     }
-                    Spacer(Modifier.height(18.dp))
+                    Spacer(Modifier.height(Dimens.xl))
                 }
             }
 
             state.notice?.let {
                 NoticeBar(it, model::dismissNotice)
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(Dimens.sm + Dimens.xs / 2))
             }
             BottomNav(state.screen, model::show)
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(Dimens.lg))
         }
     }
 }

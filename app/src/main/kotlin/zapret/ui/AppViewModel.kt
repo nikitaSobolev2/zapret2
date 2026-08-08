@@ -44,6 +44,9 @@ class AppViewModel(private val scope: CoroutineScope) {
     var windowVisible by mutableStateOf(true)
         private set
 
+    var panelVisible by mutableStateOf(false)
+        private set
+
     init {
         reload()
         scope.launch { poller.statuses().collect { state = state.withStatus(it) } }
@@ -56,10 +59,23 @@ class AppViewModel(private val scope: CoroutineScope) {
     fun openWindow(screen: Screen = state.screen) {
         state = state.copy(screen = screen)
         windowVisible = true
+        panelVisible = false
     }
 
     fun hideWindow() {
         windowVisible = false
+    }
+
+    fun togglePanel() {
+        panelVisible = !panelVisible
+    }
+
+    fun showPanel() {
+        panelVisible = true
+    }
+
+    fun hidePanel() {
+        panelVisible = false
     }
 
     fun dismissNotice() {

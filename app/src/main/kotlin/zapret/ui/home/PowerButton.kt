@@ -35,7 +35,7 @@ fun PowerButton(
     running: Boolean,
     busy: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
+    modifier: Modifier = Modifier.size(BUTTON_SIZE),
 ) {
     val ring by animateColorAsState(if (running) Palette.accent else Palette.outline, tween(500))
     val glyph by animateColorAsState(if (running) Palette.accent else Palette.textMuted, tween(500))
@@ -48,7 +48,6 @@ fun PowerButton(
 
     Box(
         modifier = modifier
-            .size(BUTTON_SIZE)
             .clip(CircleShape)
             .clickable(enabled = !busy, onClick = onClick)
             .pointerHoverIcon(PointerIcon.Hand),
