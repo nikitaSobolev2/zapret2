@@ -1,4 +1,6 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 plugins {
     kotlin("jvm") version "2.3.21"
@@ -31,6 +33,8 @@ val zapretSourceRoot: File = rootDir.parentFile
 val zapretStaged = layout.buildDirectory.dir("appResources/common/zapret2-src")
 
 val stageZapretSource = tasks.register<Sync>("stageZapretSource") {
+    // Previous make leaves relative symlinks; Sync cannot replace those in-place.
+    doFirst { delete(zapretStaged) }
     from(zapretSourceRoot) {
         exclude(".git", ".github", ".cursor", "app", "docs", "nfq2", "tmp")
         exclude("**/.DS_Store", "**/.gradle/**")
@@ -44,6 +48,18 @@ val buildStagedZapret = tasks.register<Exec>("buildStagedZapret") {
     dependsOn(stageZapretSource)
     doFirst { workingDir = zapretStaged.get().asFile }
     commandLine("make", "mac")
+    doLast {
+        // make mac links tpws/ → binaries/my/; jpackage ad-hoc codesign and Sync dislike that.
+        val root = zapretStaged.get().asFile.toPath()
+        Files.walk(root).use { paths ->
+            paths.filter { Files.isSymbolicLink(it) }.forEach { link ->
+                val target = link.toRealPath()
+                Files.delete(link)
+                Files.copy(target, link, StandardCopyOption.COPY_ATTRIBUTES)
+                link.toFile().setExecutable(true, false)
+            }
+        }
+    }
 }
 
 // the Compose plugin collects appResourcesRootDir in this task, so the sources must be staged first
