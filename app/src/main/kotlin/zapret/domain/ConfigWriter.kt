@@ -9,7 +9,9 @@ class ConfigWriter(
 ) {
 
     fun apply(config: ZapretConfig): CommandResult {
-        val text = store.edited(config) ?: throw InstallFailed("zapret2 не установлен")
+        // empty WAN means "auto" : pin the physical iface so a split-tunnel VPN on utun is left alone
+        val resolved = config.copy(ifaceWan = config.ifaceWan.ifBlank { WanInterface.detect().orEmpty() })
+        val text = store.edited(resolved) ?: throw InstallFailed("zapret2 не установлен")
         val draft = File.createTempFile("zapret-config-", ".sh").apply { writeText(text) }
         return try {
             privileges.runScript(

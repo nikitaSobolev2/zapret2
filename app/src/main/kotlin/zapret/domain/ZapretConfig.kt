@@ -23,6 +23,8 @@ data class ZapretConfig(
     val filterMode: FilterMode = FilterMode.NONE,
     val disableIpv6: Boolean = true,
     val applyFirewall: Boolean = true,
+    /** Physical WAN for PF `pass out on …`. Empty means auto-detect (en0 etc.). */
+    val ifaceWan: String = "",
 ) {
     fun toAssignments(): Map<String, String> = mapOf(
         TPWS_ENABLE to tpwsEnable.toFlag(),
@@ -35,6 +37,7 @@ data class ZapretConfig(
         MODE_FILTER to filterMode.value,
         DISABLE_IPV6 to disableIpv6.toFlag(),
         INIT_APPLY_FW to applyFirewall.toFlag(),
+        IFACE_WAN to ifaceWan.trim(),
     )
 
     companion object {
@@ -48,6 +51,7 @@ data class ZapretConfig(
         const val MODE_FILTER = "MODE_FILTER"
         const val DISABLE_IPV6 = "DISABLE_IPV6"
         const val INIT_APPLY_FW = "INIT_APPLY_FW"
+        const val IFACE_WAN = "IFACE_WAN"
         const val GZIP_LISTS = "GZIP_LISTS"
         const val LISTS_RELOAD = "LISTS_RELOAD"
 
@@ -62,6 +66,7 @@ data class ZapretConfig(
             filterMode = FilterMode.of(vars[MODE_FILTER]?.trim()),
             disableIpv6 = vars.flag(DISABLE_IPV6, default = true),
             applyFirewall = vars.flag(INIT_APPLY_FW, default = true),
+            ifaceWan = vars[IFACE_WAN]?.trim().orEmpty(),
         )
 
         private fun Map<String, String>.flag(name: String, default: Boolean): Boolean =

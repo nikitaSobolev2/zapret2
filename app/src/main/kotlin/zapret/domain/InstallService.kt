@@ -61,8 +61,9 @@ class InstallService(private val privileges: PrivilegeRunner) {
     private fun writeConfigDraft(build: File): File {
         val store = ConfigStore(defaultFile = File(build, "config.default"))
         val current = store.read() ?: ZapretConfig()
+        val wan = current.ifaceWan.ifBlank { WanInterface.detect().orEmpty() }
         val text = store.edited(
-            current.copy(tpwsEnable = true),
+            current.copy(tpwsEnable = true, ifaceWan = wan),
             extra = mapOf(
                 // PF reads its table files as plain text
                 ZapretConfig.GZIP_LISTS to "0",

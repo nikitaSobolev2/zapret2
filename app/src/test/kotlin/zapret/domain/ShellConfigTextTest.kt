@@ -50,6 +50,13 @@ class ShellConfigTextTest {
     }
 
     @Test
+    fun wanInterfaceTreatsUtunAsTunnel() {
+        assertEquals(true, WanInterface.isTunnel("utun4"))
+        assertEquals(true, WanInterface.isTunnel("ppp0"))
+        assertEquals(false, WanInterface.isTunnel("en0"))
+    }
+
+    @Test
     fun lastLinePrefersZapretDiagnostics() {
         val result = CommandResult(
             1,

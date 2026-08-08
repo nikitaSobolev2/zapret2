@@ -144,6 +144,40 @@ get_ipv6_linklocal()
 }
 
 
+# pick a physical WAN when IFACE_WAN is unset so PF `pass out` stays off VPN utun/ppp
+# interfaces. that lets a split-tunnel L2TP/IPSec VPN coexist with transparent tpws.
+zapret_resolve_wan()
+{
+	local ifc c
+
+	[ -n "$IFACE_WAN" ] && return 0
+
+	ifc=$(route -n get default 2>/dev/null | awk '/interface:/{print $2; exit}')
+	case "$ifc" in
+		en*|eth*) ;;
+		*) ifc= ;;
+	esac
+
+	if [ -z "$ifc" ]; then
+		for c in $(ifconfig -l 2>/dev/null); do
+			case "$c" in
+				en*|eth*)
+					ifconfig "$c" 2>/dev/null | grep -q 'inet ' || continue
+					ifconfig "$c" 2>/dev/null | grep -q 'status: active' || continue
+					ifc=$c
+					break
+					;;
+			esac
+		done
+	fi
+
+	[ -n "$ifc" ] && {
+		IFACE_WAN=$ifc
+		export IFACE_WAN
+		echo "zapret2: IFACE_WAN auto-selected: $IFACE_WAN (keeps VPN tunnels out of the redirect)"
+	}
+}
+
 zapret_do_firewall()
 {
 	# $1 - 1 - add, 0 - del
@@ -152,6 +186,7 @@ zapret_do_firewall()
 	[ "$1" = 0 -a -n "$INIT_FW_PRE_DOWN_HOOK" ] && $INIT_FW_PRE_DOWN_HOOK
 
 	if [ "$1" = "1" ] ; then
+		zapret_resolve_wan
 		pf_anchor_root || return 1
 		pf_anchors_create
 		pf_anchors_load || return 1

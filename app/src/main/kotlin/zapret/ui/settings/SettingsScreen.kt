@@ -79,6 +79,17 @@ fun SettingsScreen(
         Section("Сеть и брандмауэр") {
             SwitchRow("Не работать с IPv6", draft.disableIpv6) { draft = draft.copy(disableIpv6 = it) }
             SwitchRow("Применять правила PF", draft.applyFirewall) { draft = draft.copy(applyFirewall = it) }
+            ValueField(
+                label = "Интерфейс WAN",
+                value = draft.ifaceWan,
+                onChange = { draft = draft.copy(ifaceWan = it) },
+            )
+            Text(
+                text = "Физический интерфейс для обхода (обычно en0). " +
+                    "Пусто = авто. Нужен, чтобы корпоративный VPN (L2TP/utun) работал вместе с zapret.",
+                style = MaterialTheme.typography.labelSmall,
+                color = Palette.textMuted,
+            )
         }
 
         Section("Права") {
