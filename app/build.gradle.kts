@@ -57,6 +57,7 @@ compose.desktop {
                 minimumSystemVersion = "12.0"
                 // unsigned local DMG: user may need right-click → Open the first time (Gatekeeper)
                 appCategory = "public.app-category.utilities"
+                iconFile.set(project.file("icons/Zapret.icns"))
             }
         }
     }

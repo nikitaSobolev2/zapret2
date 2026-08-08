@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Zapret">
+  <defs>
+    <clipPath id="squircleClip">
+      <path d="M512 0C774.5 0 896 0 960 64C1024 128 1024 249.5 1024 512C1024 774.5 1024 896 960 960C896 1024 774.5 1024 512 1024C249.5 1024 128 1024 64 960C0 896 0 774.5 0 512C0 249.5 0 128 64 64C128 0 249.5 0 512 0Z"/>
+    </clipPath>
+
+    <linearGradient id="plate" x1="180" y1="80" x2="860" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1A2A33"/>
+      <stop offset="42%" stop-color="#101820"/>
+      <stop offset="100%" stop-color="#070B10"/>
+    </linearGradient>
+
+    <radialGradient id="glow" cx="50%" cy="42%" r="62%">
+      <stop offset="0%" stop-color="#2DE2C5" stop-opacity="0.26"/>
+      <stop offset="55%" stop-color="#2DE2C5" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#2DE2C5" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="lockBody" x1="300" y1="430" x2="724" y2="820" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6AF0DA"/>
+      <stop offset="45%" stop-color="#2DE2C5"/>
+      <stop offset="100%" stop-color="#149E8A"/>
+    </linearGradient>
+
+    <linearGradient id="lockSheen" x1="340" y1="430" x2="680" y2="780" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.34"/>
+      <stop offset="40%" stop-color="#FFFFFF" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+
+    <linearGradient id="shackle" x1="360" y1="220" x2="680" y2="440" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#B8FFF3"/>
+      <stop offset="50%" stop-color="#2DE2C5"/>
+      <stop offset="100%" stop-color="#1AB59F"/>
+    </linearGradient>
+
+    <linearGradient id="rim" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.18"/>
+      <stop offset="48%" stop-color="#FFFFFF" stop-opacity="0.04"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.35"/>
+    </linearGradient>
+
+    <filter id="lockShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="16" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <!--
+    Lock composition bbox ≈ y: 236…820, x: 312…712
+    Visual center nudged to canvas center (512, 512) via translate(0, 34).
+  -->
+  <g clip-path="url(#squircleClip)">
+    <rect width="1024" height="1024" fill="url(#plate)"/>
+    <rect width="1024" height="1024" fill="url(#glow)"/>
+    <rect width="1024" height="1024" fill="url(#rim)" opacity="0.9"/>
+
+    <g transform="translate(0 34)" filter="url(#lockShadow)">
+      <!-- left shackle: from body top-left up and over center -->
+      <path
+        d="M392 450
+           V352
+           C392 268 444 236 512 236"
+        fill="none"
+        stroke="url(#shackle)"
+        stroke-width="68"
+        stroke-linecap="round"
+      />
+
+      <!-- right shackle stump -->
+      <path
+        d="M632 450
+           V398
+           C632 346 608 310 572 286"
+        fill="none"
+        stroke="url(#shackle)"
+        stroke-width="68"
+        stroke-linecap="round"
+      />
+
+      <!-- broken fragment — kept close so weight stays near axis -->
+      <path
+        d="M596 252 L648 210"
+        fill="none"
+        stroke="url(#shackle)"
+        stroke-width="60"
+        stroke-linecap="round"
+        transform="rotate(8 622 231)"
+      />
+      <circle cx="648" cy="210" r="16" fill="#C9FFF6" opacity="0.8" transform="rotate(8 622 231)"/>
+
+      <!-- body centered on x=512 -->
+      <rect x="312" y="450" width="400" height="318" rx="74" fill="url(#lockBody)"/>
+      <rect x="312" y="450" width="400" height="318" rx="74" fill="url(#lockSheen)"/>
+      <rect
+        x="312" y="450" width="400" height="318" rx="74"
+        fill="none"
+        stroke="#FFFFFF"
+        stroke-opacity="0.16"
+        stroke-width="4"
+      />
+
+      <!-- crack through center -->
+      <path
+        d="M500 450 L478 530 L528 580 L486 665 L520 768"
+        fill="none"
+        stroke="#071015"
+        stroke-width="20"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        opacity="0.72"
+      />
+      <path
+        d="M504 456 L484 530 L532 578 L492 664 L522 760"
+        fill="none"
+        stroke="#000000"
+        stroke-width="7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        opacity="0.35"
+      />
+
+      <!-- keyhole on body center (512, ~590) -->
+      <circle cx="512" cy="575" r="40" fill="#071015"/>
+      <path
+        d="M495 588 L495 662 C495 674 502 682 512 682 C522 682 529 674 529 662 L529 588 Z"
+        fill="#071015"
+      />
+      <circle cx="512" cy="575" r="40" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="3"/>
+    </g>
+
+    <path
+      d="M0 0 H1024 V420 C780 360 260 360 0 420 Z"
+      fill="#FFFFFF"
+      opacity="0.045"
+    />
+  </g>
+
+  <path
+    d="M512 0C774.5 0 896 0 960 64C1024 128 1024 249.5 1024 512C1024 774.5 1024 896 960 960C896 1024 774.5 1024 512 1024C249.5 1024 128 1024 64 960C0 896 0 774.5 0 512C0 249.5 0 128 64 64C128 0 249.5 0 512 0Z"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-opacity="0.12"
+    stroke-width="6"
+  />
+</svg>
