@@ -1,6 +1,6 @@
 cask "zapret" do
-  version "1.0.1"
-  sha256 "29c68efd9640741d94087d04569a3c72a2b2f1feddbcd00ddd21cdf1aa443494"
+  version "1.1.1"
+  sha256 "2376e441eccefc15af72f2bfae7c93bde53b59b5963314d4b3a61e242b17b2dd"
 
   url "https://github.com/nikitaSobolev2/zapret2/releases/download/v#{version}/Zapret-#{version}.dmg"
   name "Zapret"

@@ -95,7 +95,13 @@ jobs:
         env:
           VERSION: ${{ steps.ver.outputs.version }}
           SHA256: ${{ steps.dmg.outputs.sha256 }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
+          set -euo pipefail
+          # Tag checkout is often behind master (other CI commits). Bump on latest default branch.
+          git fetch origin "$DEFAULT_BRANCH"
+          git checkout -B "brew-bump-${VERSION}" "origin/${DEFAULT_BRANCH}"
+
           ruby -e '
             path = "Casks/zapret.rb"
             text = File.read(path)
@@ -103,12 +109,19 @@ jobs:
             text.sub!(/sha256 "[^"]+"/, %(sha256 "#{ENV["SHA256"]}"))
             File.write(path, text)
           '
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Casks/zapret.rb
           if git diff --staged --quiet; then
             echo "Cask already up to date"
-          else
-            git commit -m "brew: bump zapret cask to ${VERSION}"
-            git push origin "HEAD:refs/heads/${{ github.event.repository.default_branch }}"
+            exit 0
+          fi
+          git commit -m "brew: bump zapret cask to ${VERSION}"
+
+          # Retry once if master moved during the job.
+          if ! git push origin "HEAD:refs/heads/${DEFAULT_BRANCH}"; then
+            git fetch origin "$DEFAULT_BRANCH"
+            git rebase "origin/${DEFAULT_BRANCH}"
+            git push origin "HEAD:refs/heads/${DEFAULT_BRANCH}"
           fi
