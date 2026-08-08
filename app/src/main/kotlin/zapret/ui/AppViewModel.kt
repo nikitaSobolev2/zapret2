@@ -24,6 +24,7 @@ import zapret.domain.PrivilegeRunner
 import zapret.domain.ServiceOrchestrator
 import zapret.domain.StatusPoller
 import zapret.domain.StrategyCatalog
+import zapret.domain.StrategyProbe
 import zapret.domain.TgWsProxyConfig
 import zapret.domain.TgWsProxyService
 import zapret.domain.TgWsProxyStore
@@ -57,8 +58,10 @@ class AppViewModel(private val scope: CoroutineScope) {
     private val passwordless = PasswordlessControl(privileges)
     private val prefsStore = AppPrefsStore()
     private val updater by lazy { AppUpdateService() }
+    private val strategyProbe by lazy { StrategyProbe(listsStore, service) }
 
     private var updateJob: Job? = null
+    private var probeJob: Job? = null
 
     var state by mutableStateOf(UiState(appVersion = AppVersion.current()))
         private set
@@ -175,6 +178,42 @@ class AppViewModel(private val scope: CoroutineScope) {
         val prefs = AppPrefs(autoUpdate = enabled)
         prefsStore.write(prefs)
         state = state.copy(autoUpdate = enabled)
+    }
+
+    fun probeStrategies() {
+        if (state.busy != null || state.probePhase != null) return
+        if (!state.installed) {
+            state = state.copy(notice = Notice("Сначала установите движок", isError = true))
+            return
+        }
+        probeJob?.cancel()
+        strategyProbe.cancel()
+        probeJob = scope.launch {
+            state = state.copy(probePhase = "Подбор стратегии…", probeReport = null, notice = null)
+            val outcome = runCatching {
+                withContext(Dispatchers.IO) {
+                    strategyProbe.run { phase ->
+                        scope.launch { state = state.copy(probePhase = phase) }
+                    }
+                }
+            }
+            reload()
+            state = state.copy(
+                probePhase = null,
+                probeReport = outcome.getOrNull(),
+                notice = when {
+                    outcome.isFailure -> Notice(
+                        outcome.exceptionOrNull()?.message ?: "Подбор не удался",
+                        isError = true,
+                    )
+                    outcome.getOrNull()?.winnerId != null -> Notice(
+                        "Подобрана стратегия ${outcome.getOrNull()!!.winnerId}",
+                        isError = false,
+                    )
+                    else -> Notice("Рабочая стратегия не найдена — восстановлена прежняя", isError = true)
+                },
+            )
+        }
     }
 
     fun checkForUpdates() {

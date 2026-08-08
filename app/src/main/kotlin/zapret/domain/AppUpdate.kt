@@ -5,6 +5,7 @@ import java.net.HttpURLConnection
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.seconds
 
@@ -12,6 +13,7 @@ data class UpdateInfo(
     val version: String,
     val downloadUrl: String,
     val assetName: String,
+    val sha256: String? = null,
 )
 
 enum class UpdatePhase {
@@ -26,6 +28,7 @@ enum class UpdatePhase {
  * Checks GitHub Releases for a newer Zapret-*.dmg and installs it over the running .app.
  *
  * Uses [HttpURLConnection] (java.base) — jpackage's trimmed runtime often omits java.net.http.
+ * Only trusts assets from [TRUSTED_REPO] with optional SHA-256 verification.
  */
 class AppUpdateService(
     private val releasesUrl: String = RELEASES_LATEST,
@@ -42,12 +45,20 @@ class AppUpdateService(
 
     fun checkLatest(currentVersion: String = AppVersion.current()): Result<UpdateInfo?> = runCatching {
         val body = getText(releasesUrl)
-        val info = parseLatestDmg(body) ?: return@runCatching null
+        var info = parseLatestDmg(body) ?: return@runCatching null
+        requireTrustedDownloadUrl(info.downloadUrl)
+        if (info.sha256 == null) {
+            info = info.copy(sha256 = fetchCaskSha256(info.version))
+        }
+        if (info.sha256 == null) error("release has no SHA-256 for ${info.assetName}")
         if (AppVersion.isNewer(info.version, currentVersion)) info else null
     }
 
     fun download(info: UpdateInfo, onProgress: (Long, Long?) -> Unit = { _, _ -> }): Result<File> = runCatching {
         clearCancel()
+        requireTrustedDownloadUrl(info.downloadUrl)
+        val expectedSha = info.sha256 ?: fetchCaskSha256(info.version)
+            ?: error("missing SHA-256 for ${info.assetName}")
         val dest = File(AppPrefsPaths.cacheDir, info.assetName)
         val connection = open(info.downloadUrl, timeoutMs = 600_000)
         try {
@@ -71,7 +82,18 @@ class AppUpdateService(
         } finally {
             connection.disconnect()
         }
+        verifySha256(dest, expectedSha)
         dest
+    }
+
+    private fun fetchCaskSha256(version: String): String? {
+        val url = "https://raw.githubusercontent.com/$TRUSTED_REPO/main/Casks/zapret.rb"
+        return runCatching {
+            val text = getText(url)
+            val caskVersion = Regex("""version\s+"([^"]+)"""").find(text)?.groupValues?.get(1)
+            if (caskVersion != null && caskVersion != version) return@runCatching null
+            Regex("""sha256\s+"([a-fA-F0-9]{64})"""").find(text)?.groupValues?.get(1)?.lowercase()
+        }.getOrNull()
     }
 
     /**
@@ -104,6 +126,7 @@ class AppUpdateService(
         }
 
     private fun getText(url: String): String {
+        requireTrustedApiUrl(url)
         val connection = open(url, timeoutMs = 30_000)
         try {
             connection.setRequestProperty("Accept", "application/vnd.github+json")
@@ -192,27 +215,109 @@ class AppUpdateService(
     }
 
     companion object {
+        const val TRUSTED_REPO = "nikitaSobolev2/zapret2"
         const val RELEASES_LATEST =
-            "https://api.github.com/repos/nikitaSobolev2/zapret2/releases/latest"
+            "https://api.github.com/repos/$TRUSTED_REPO/releases/latest"
         const val NOT_PACKAGED = "Обновление доступно только в установленном Zapret.app"
         private const val USER_AGENT = "Zapret-macOS-control"
+        private val HEX_SHA256 = Regex("^[a-fA-F0-9]{64}$")
+
+        fun requireTrustedApiUrl(url: String) {
+            val uri = URI.create(url)
+            if (uri.scheme != "https") error("untrusted update URL scheme")
+            when (uri.host) {
+                "api.github.com" -> {
+                    if (!uri.path.contains("/repos/$TRUSTED_REPO/")) error("untrusted update repository")
+                }
+                "raw.githubusercontent.com" -> {
+                    if (!uri.path.startsWith("/$TRUSTED_REPO/")) error("untrusted raw content path")
+                }
+                else -> error("untrusted update API host")
+            }
+        }
+
+        fun requireTrustedDownloadUrl(url: String) {
+            val uri = URI.create(url)
+            if (uri.scheme != "https") error("update URL must be https")
+            val host = uri.host ?: error("invalid update URL")
+            val path = uri.path ?: ""
+            val allowedHost = host == "github.com" || host == "objects.githubusercontent.com" ||
+                host.endsWith(".githubusercontent.com")
+            if (!allowedHost) error("untrusted download host: $host")
+            if (host == "github.com" && !path.contains("/$TRUSTED_REPO/")) {
+                error("untrusted download path")
+            }
+            if (!path.substringAfterLast('/').startsWith("Zapret-") || !path.endsWith(".dmg")) {
+                error("untrusted asset name")
+            }
+        }
+
+        fun verifySha256(file: File, expected: String) {
+            val want = expected.removePrefix("sha256:").trim().lowercase()
+            if (!HEX_SHA256.matches(want)) error("invalid SHA-256 digest in release metadata")
+            val digest = MessageDigest.getInstance("SHA-256")
+            file.inputStream().use { input ->
+                val buf = ByteArray(64 * 1024)
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    digest.update(buf, 0, n)
+                }
+            }
+            val got = digest.digest().joinToString("") { "%02x".format(it) }
+            if (got != want) {
+                file.delete()
+                error("SHA-256 mismatch for ${file.name}")
+            }
+        }
 
         fun parseLatestDmg(json: String): UpdateInfo? {
             val tag = Regex(""""tag_name"\s*:\s*"([^"]+)"""").find(json)?.groupValues?.get(1)
                 ?: return null
             val versionFromTag = tag.removePrefix("v")
-            val url = Regex(""""browser_download_url"\s*:\s*"(https://[^"]+/Zapret-[^"]+\.dmg)"""")
-                .find(json)
-                ?.groupValues
-                ?.get(1)
-                ?: return null
-            val name = url.substringAfterLast('/')
+            val assetBlocks = Regex(""""browser_download_url"\s*:\s*"(https://[^"]+)"""")
+                .findAll(json)
+                .map { it.groupValues[1] }
+                .toList()
+            val dmgUrl = assetBlocks.firstOrNull { url ->
+                val name = url.substringAfterLast('/')
+                name.startsWith("Zapret-") && name.endsWith(".dmg") &&
+                    runCatching { requireTrustedDownloadUrl(url); true }.getOrDefault(false)
+            } ?: return null
+            val name = dmgUrl.substringAfterLast('/')
             val versionFromName = Regex("""Zapret-(\d+(?:\.\d+){0,2})\.dmg""").find(name)?.groupValues?.get(1)
+            val sha256 = extractSha256(json, name)
             return UpdateInfo(
                 version = versionFromName ?: versionFromTag,
-                downloadUrl = url,
+                downloadUrl = dmgUrl,
                 assetName = name,
+                sha256 = sha256,
             )
+        }
+
+        /** GitHub asset `digest` field or companion `*.dmg.sha256` / body checksum. */
+        fun extractSha256(json: String, assetName: String): String? {
+            val digestNearName = Regex(
+                """"name"\s*:\s*"${Regex.escape(assetName)}"[\s\S]{0,400}?"digest"\s*:\s*"sha256:([a-fA-F0-9]{64})""",
+            ).find(json)?.groupValues?.get(1)
+            if (digestNearName != null) return digestNearName.lowercase()
+
+            val digestBeforeName = Regex(
+                """"digest"\s*:\s*"sha256:([a-fA-F0-9]{64})"[\s\S]{0,400}?"name"\s*:\s*"${Regex.escape(assetName)}""",
+            ).find(json)?.groupValues?.get(1)
+            if (digestBeforeName != null) return digestBeforeName.lowercase()
+
+            val shaAsset = Regex(
+                """"browser_download_url"\s*:\s*"(https://[^"]+/${Regex.escape(assetName)}\.sha256)"""",
+            ).find(json)?.groupValues?.get(1)
+            if (shaAsset != null) {
+                // Caller may fetch separately; keep URL hash from body if present.
+            }
+
+            val bodyHex = Regex(
+                """(?i)(?:sha256|SHA-256)[=:\s]+([a-fA-F0-9]{64}).{0,80}${Regex.escape(assetName)}""",
+            ).find(json)?.groupValues?.get(1)
+            return bodyHex?.lowercase()
         }
     }
 }

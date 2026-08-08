@@ -8,6 +8,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -19,6 +20,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -30,7 +33,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,8 +57,8 @@ fun Section(
     Column(Modifier.fillMaxWidth()) {
         Text(
             text = title,
-            style = MaterialTheme.typography.labelSmall,
-            color = Palette.textMuted,
+            style = MaterialTheme.typography.titleSmall,
+            color = Palette.text,
             modifier = Modifier.padding(start = Dimens.xs, bottom = Dimens.xs),
         )
         if (creditLabel != null && onCreditClick != null) {
@@ -238,6 +243,102 @@ fun AccentButton(text: String, enabled: Boolean, onClick: () -> Unit, modifier: 
         modifier = modifier.height(Dimens.buttonHeight),
     ) {
         Text(text, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+@Composable
+fun GhostButton(text: String, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val pressed by interaction.collectIsPressedAsState()
+    val border = when {
+        !enabled -> Palette.outline.copy(alpha = 0.4f)
+        pressed -> Palette.accent
+        hovered -> Palette.accent.copy(alpha = 0.7f)
+        else -> Palette.outline
+    }
+    val fill = when {
+        pressed -> Palette.pressed
+        hovered -> Palette.hover
+        else -> Palette.surfaceRaised
+    }
+
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        interactionSource = interaction,
+        shape = RoundedCornerShape(Dimens.radiusButton),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = fill,
+            contentColor = Palette.text,
+            disabledContainerColor = Palette.surfaceRaised,
+            disabledContentColor = Palette.textMuted,
+        ),
+        modifier = modifier
+            .height(Dimens.buttonHeight)
+            .border(1.dp, border, RoundedCornerShape(Dimens.radiusButton)),
+    ) {
+        Text(text, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+@Composable
+fun TextAction(text: String, enabled: Boolean, onClick: () -> Unit, danger: Boolean = false) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        color = when {
+            !enabled -> Palette.textMuted
+            danger -> Palette.danger
+            else -> Palette.accent
+        },
+        modifier = Modifier
+            .clip(RoundedCornerShape(Dimens.radiusField))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = Dimens.sm, horizontal = Dimens.xs),
+    )
+}
+
+@Composable
+fun DropdownField(
+    label: String,
+    value: String,
+    options: List<Pair<String, String>>,
+    onSelect: (String) -> Unit,
+    enabled: Boolean = true,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Dimens.xs)) {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = Palette.textMuted)
+        Box {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Dimens.radiusField))
+                    .background(Palette.fieldIdle)
+                    .border(1.dp, Palette.outline, RoundedCornerShape(Dimens.radiusField))
+                    .clickable(enabled = enabled) { expanded = true }
+                    .padding(horizontal = Dimens.md, vertical = Dimens.md),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(value, style = MaterialTheme.typography.bodyLarge, color = Palette.text, modifier = Modifier.weight(1f))
+                Text("▾", color = Palette.textMuted)
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+            ) {
+                options.forEach { (id, title) ->
+                    DropdownMenuItem(
+                        text = { Text(title, color = Palette.text) },
+                        onClick = {
+                            onSelect(id)
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
     }
 }
 

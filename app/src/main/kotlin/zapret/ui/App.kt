@@ -26,28 +26,29 @@ fun App(model: AppViewModel) = ZapretTheme {
     Box(Modifier.fillMaxSize().background(appBackground())) {
         Column(Modifier.fillMaxSize().padding(horizontal = Dimens.xl)) {
             Box(Modifier.weight(1f)) {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Spacer(Modifier.height(Dimens.xxl))
-                    when (state.screen) {
-                        Screen.HOME -> HomeScreen(
+                when (state.screen) {
+                    Screen.HOME -> Column(Modifier.verticalScroll(rememberScrollState())) {
+                        Spacer(Modifier.height(Dimens.xxl))
+                        HomeScreen(
                             state = state,
                             onToggle = model::toggle,
                             onOpen = model::show,
                             onInstallCompiler = model::installCompilerTools,
                         )
-
-                        Screen.SETTINGS -> SettingsScreen(
-                            state = state,
-                            onApply = model::applyConfig,
-                            onInstall = model::install,
-                            onUninstall = model::uninstall,
-                            onPasswordless = model::setPasswordless,
-                            onAutoUpdate = model::setAutoUpdate,
-                            onCheckUpdates = model::checkForUpdates,
-                            onUpdateNow = { model.startUpdate() },
-                        )
+                        Spacer(Modifier.height(Dimens.xl))
                     }
-                    Spacer(Modifier.height(Dimens.xl))
+
+                    Screen.SETTINGS -> SettingsScreen(
+                        state = state,
+                        onApply = model::applyConfig,
+                        onInstall = model::install,
+                        onUninstall = model::uninstall,
+                        onPasswordless = model::setPasswordless,
+                        onAutoUpdate = model::setAutoUpdate,
+                        onCheckUpdates = model::checkForUpdates,
+                        onUpdateNow = { model.startUpdate() },
+                        onProbeStrategies = model::probeStrategies,
+                    )
                 }
             }
 

@@ -17,6 +17,8 @@ enum class IpsetMode(val value: String, val label: String) {
 data class ZapretConfig(
     val strategyId: String = DEFAULT_STRATEGY,
     val ipsetMode: IpsetMode = IpsetMode.NONE,
+    /** Divert Discord/STUN UDP port bands via PF (battery cost when on). */
+    val discordUdp: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_STRATEGY = "general-simple-fake"

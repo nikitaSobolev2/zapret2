@@ -34,6 +34,9 @@ class EngineListsStore(
         if (!ZapretPaths.ipsetModeFile.isFile) {
             ZapretPaths.ipsetModeFile.writeText(IpsetMode.NONE.value + "\n")
         }
+        if (!discordUdpFile.isFile) {
+            discordUdpFile.writeText("1\n")
+        }
     }
 
     fun readConfig(): ZapretConfig {
@@ -41,9 +44,11 @@ class EngineListsStore(
         val strategy = ZapretPaths.selectedStrategyFile.readText().trim()
             .ifEmpty { ZapretConfig.DEFAULT_STRATEGY }
         val mode = IpsetMode.of(ZapretPaths.ipsetModeFile.readText().trim())
+        val discordUdp = discordUdpFile.readText().trim() != "0"
         return ZapretConfig(
             strategyId = if (StrategyCatalog.isValidId(strategy)) strategy else ZapretConfig.DEFAULT_STRATEGY,
             ipsetMode = mode,
+            discordUdp = discordUdp,
         )
     }
 
@@ -52,7 +57,11 @@ class EngineListsStore(
         ZapretPaths.userDataRoot.mkdirs()
         ZapretPaths.selectedStrategyFile.writeText(config.strategyId.trim() + "\n")
         ZapretPaths.ipsetModeFile.writeText(config.ipsetMode.value + "\n")
+        discordUdpFile.writeText(if (config.discordUdp) "1\n" else "0\n")
     }
+
+    private val discordUdpFile: File
+        get() = File(ZapretPaths.userDataRoot, "discord-udp")
 
     fun readList(name: String): String {
         require(name in LIST_FILES) { "unknown list: $name" }

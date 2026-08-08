@@ -5,8 +5,10 @@ DATA_ROOT=$1
 BASE='/Library/Application Support/Zapret'
 ANCHOR=com.apple/zapret
 TOKEN_FILE=/var/run/zapret.pf-token
+CONF_FILE=/var/run/zapret.conf
 ENGINE_PID=
 WATCHDOG_PID=
+LOG_MAX_BYTES=5242880
 
 case "$DATA_ROOT" in
     /Users/*/'Library/Application Support/Zapret') ;;
@@ -22,6 +24,16 @@ release_pf_token() {
         TOKEN=$(/bin/cat "$TOKEN_FILE" 2>/dev/null || true)
         if [ -n "$TOKEN" ]; then /sbin/pfctl -X "$TOKEN" >/dev/null 2>&1 || true; fi
         /bin/rm -f "$TOKEN_FILE"
+    fi
+}
+
+rotate_log() {
+    LOG="$BASE/engine.log"
+    if [ -f "$LOG" ]; then
+        SIZE=$(/usr/bin/stat -f%z "$LOG" 2>/dev/null || echo 0)
+        if [ "$SIZE" -gt "$LOG_MAX_BYTES" ]; then
+            /bin/mv -f "$LOG" "$BASE/engine.log.1" 2>/dev/null || true
+        fi
     fi
 }
 
@@ -75,6 +87,10 @@ if /sbin/route -n get -inet6 default >/var/run/zapret.route6 2>/dev/null; then
 fi
 /bin/rm -f /var/run/zapret.route6
 
+if [ -L "$DATA_ROOT/selected-strategy" ] || [ ! -f "$DATA_ROOT/selected-strategy" ]; then exit 1; fi
+if [ -L "$DATA_ROOT/ipset-mode" ] || [ ! -f "$DATA_ROOT/ipset-mode" ]; then exit 1; fi
+if [ -L "$DATA_ROOT/discord-udp" ]; then exit 1; fi
+
 STRATEGY=$(/usr/bin/tr -d '[:space:]' <"$DATA_ROOT/selected-strategy" 2>/dev/null || true)
 if ! printf '%s\n' "$STRATEGY" | /usr/bin/grep -Eq '^general(-[a-z0-9]+)*$' || [ ! -f "$BASE/strategies/$STRATEGY.conf.in" ]; then
     STRATEGY=general-simple-fake
@@ -83,29 +99,58 @@ fi
 if [ -L "$DATA_ROOT" ] || [ -L "$DATA_ROOT/lists" ] || [ ! -d "$DATA_ROOT/lists" ]; then exit 1; fi
 RUNTIME_LISTS="$BASE/lists"
 /bin/mkdir -p "$RUNTIME_LISTS"
-for NAME in list-general.txt list-general-user.txt list-google.txt list-exclude.txt list-exclude-user.txt ipset-all.txt ipset-exclude.txt ipset-exclude-user.txt; do
+
+IPSET_MODE=$(/usr/bin/tr -d '[:space:]' <"$DATA_ROOT/ipset-mode" 2>/dev/null || true)
+case "$IPSET_MODE" in
+    loaded|any|none|'') ;;
+    *) IPSET_MODE=none ;;
+esac
+
+LIST_NAMES='list-general.txt list-general-user.txt list-google.txt list-exclude.txt list-exclude-user.txt ipset-exclude.txt ipset-exclude-user.txt'
+if [ "$IPSET_MODE" = "loaded" ]; then
+    LIST_NAMES="$LIST_NAMES ipset-all.txt"
+fi
+for NAME in $LIST_NAMES; do
     SOURCE_LIST="$DATA_ROOT/lists/$NAME"
     if [ -L "$SOURCE_LIST" ] || [ ! -f "$SOURCE_LIST" ]; then exit 1; fi
     /usr/bin/install -m 0644 "$SOURCE_LIST" "$RUNTIME_LISTS/$NAME"
 done
+# Keep a tiny placeholder so strategies referencing ipset-all stay readable when mode != loaded.
+if [ "$IPSET_MODE" != "loaded" ]; then
+    /usr/bin/printf '' >"$RUNTIME_LISTS/ipset-all.txt"
+    /bin/chmod 644 "$RUNTIME_LISTS/ipset-all.txt"
+fi
 /usr/sbin/chown -R root:wheel "$RUNTIME_LISTS"
 /bin/chmod 755 "$BASE" "$RUNTIME_LISTS" "$BASE/bin"
 /bin/chmod 644 "$RUNTIME_LISTS"/*
 
-IPSET_MODE=$(/usr/bin/tr -d '[:space:]' <"$DATA_ROOT/ipset-mode" 2>/dev/null || true)
 case "$IPSET_MODE" in
     loaded) IPSET="$RUNTIME_LISTS/ipset-all.txt" ;;
     any) IPSET="$BASE/ipset-any.txt" ;;
     *) IPSET="$BASE/ipset-none.txt" ;;
 esac
 
-/usr/bin/sed -e "s|@BASE@|$BASE|g" -e "s|@LISTS@|$RUNTIME_LISTS|g" -e "s|@IPSET@|$IPSET|g" "$BASE/strategies/$STRATEGY.conf.in" > /var/run/zapret.conf
+DISCORD_UDP=1
+if [ -f "$DATA_ROOT/discord-udp" ]; then
+    DISCORD_UDP=$(/usr/bin/tr -d '[:space:]' <"$DATA_ROOT/discord-udp" 2>/dev/null || echo 1)
+fi
+case "$DISCORD_UDP" in
+    0) UDP_PORTS='443' ;;
+    *) UDP_PORTS='443,19294:19344,50000:50100' ;;
+esac
 
+/usr/bin/sed -e "s|@BASE@|$BASE|g" -e "s|@LISTS@|$RUNTIME_LISTS|g" -e "s|@IPSET@|$IPSET|g" \
+    "$BASE/strategies/$STRATEGY.conf.in" >"$CONF_FILE"
+# Drop privileges after BPF/utun init (nfq opens devices before --user takes effect).
+/usr/bin/printf '\n--user=nobody\n' >>"$CONF_FILE"
+/bin/chmod 0600 "$CONF_FILE"
+
+rotate_log
 export ZAPRET_IFACE="$PHYSICAL_IFACE"
 export ZAPRET_GATEWAY_MAC="$GATEWAY_MAC"
 export ZAPRET_GATEWAY6_MAC="$GATEWAY6_MAC"
 export ZAPRET_UTUN_UNIT=51
-"$BASE/bin/utunws" @/var/run/zapret.conf >>"$BASE/engine.log" 2>&1 &
+"$BASE/bin/utunws" @"$CONF_FILE" >>"$BASE/engine.log" 2>&1 &
 ENGINE_PID=$!
 
 I=0
@@ -120,13 +165,16 @@ WATCHDOG_PID=$!
 
 if /sbin/pfctl -s info 2>/dev/null | /usr/bin/grep -q '^Status: Disabled'; then
     TOKEN=$(/sbin/pfctl -E 2>&1 | /usr/bin/awk '/Token :/ { print $3 }')
-    if [ -n "$TOKEN" ]; then /bin/echo "$TOKEN" >"$TOKEN_FILE"; fi
+    if [ -n "$TOKEN" ]; then
+        /bin/echo "$TOKEN" >"$TOKEN_FILE"
+        /bin/chmod 0600 "$TOKEN_FILE"
+    fi
 fi
 
 # Bind divert to physical WAN only so split-tunnel corp VPN (ppp0/utun) is untouched.
 printf '%s\n' \
   "pass out quick on $PHYSICAL_IFACE route-to (utun50 10.77.0.2) inet proto tcp from any to any port {80,443,2053,2083,2087,2096,8443} user { >root } no state" \
-  "pass out quick on $PHYSICAL_IFACE route-to (utun50 10.77.0.2) inet proto udp from any to any port {443,19294:19344,50000:50100} user { >root } no state" \
+  "pass out quick on $PHYSICAL_IFACE route-to (utun50 10.77.0.2) inet proto udp from any to any port {$UDP_PORTS} user { >root } no state" \
   | /sbin/pfctl -a "$ANCHOR" -f -
 
 while kill -0 "$ENGINE_PID" 2>/dev/null; do
