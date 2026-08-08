@@ -1,7 +1,5 @@
 package zapret.domain
 
-import java.io.File
-
 /** Installs an edited config over the root owned one and restarts zapret2 so it takes effect. */
 class ConfigWriter(
     private val privileges: PrivilegeRunner,
@@ -11,8 +9,9 @@ class ConfigWriter(
     fun apply(config: ZapretConfig): CommandResult {
         // empty WAN means "auto" : pin the physical iface so a split-tunnel VPN on utun is left alone
         val resolved = config.copy(ifaceWan = config.ifaceWan.ifBlank { WanInterface.detect().orEmpty() })
+        ConfigValidation.requireValid(resolved)
         val text = store.edited(resolved) ?: throw InstallFailed("zapret2 не установлен")
-        val draft = File.createTempFile("zapret-config-", ".sh").apply { writeText(text) }
+        val draft = SecureTemp.file("zapret-config-", ".sh").apply { writeText(text) }
         return try {
             privileges.runScript(
                 SCRIPT,

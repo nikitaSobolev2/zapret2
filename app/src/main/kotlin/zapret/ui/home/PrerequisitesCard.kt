@@ -35,8 +35,21 @@ fun PrerequisitesCard(
             verticalArrangement = Arrangement.spacedBy(Dimens.sm),
         ) {
             Text("Готовность", style = MaterialTheme.typography.titleMedium, color = Palette.text)
-            CheckLine("Инструменты сборки (Xcode CLT)", prerequisites.hasCompiler)
             CheckLine("Исходники zapret2", prerequisites.hasSources)
+            CheckLine(
+                label = "Готовый tpws",
+                ok = prerequisites.hasPrebuiltBinary,
+                detail = if (prerequisites.hasPrebuiltBinary) "в пакете" else "будет собран при установке",
+            )
+            CheckLine(
+                label = "Инструменты сборки (Xcode CLT)",
+                ok = prerequisites.hasCompiler || prerequisites.hasPrebuiltBinary,
+                detail = when {
+                    prerequisites.hasPrebuiltBinary -> "не нужны"
+                    prerequisites.hasCompiler -> null
+                    else -> "нужны для сборки"
+                },
+            )
             CheckLine(
                 label = "Интерфейс WAN",
                 ok = prerequisites.wanInterface != null,
@@ -53,7 +66,7 @@ fun PrerequisitesCard(
                 detail = if (prerequisites.passwordlessControl) "sudoers" else "опционально · Настройки",
             )
 
-            if (!prerequisites.hasCompiler) {
+            if (!prerequisites.hasPrebuiltBinary && !prerequisites.hasCompiler) {
                 TextButton(onClick = onInstallCompiler) {
                     Text("Установить инструменты", color = Palette.accent)
                 }

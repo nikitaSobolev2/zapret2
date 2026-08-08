@@ -26,19 +26,28 @@ dependencies {
     testImplementation(kotlin("test"))
 }
 
-// the packaged app carries the zapret2 sources so that it can build and install them itself
+// Packaged app carries zapret2 sources plus prebuilt universal mac binaries (make mac).
 val zapretSourceRoot: File = rootDir.parentFile
+val zapretStaged = layout.buildDirectory.dir("appResources/common/zapret2-src")
 
 val stageZapretSource = tasks.register<Sync>("stageZapretSource") {
     from(zapretSourceRoot) {
         exclude(".git", ".github", ".cursor", "app", "docs", "nfq2", "tmp")
         exclude("**/.DS_Store", "**/.gradle/**")
+        // Always rebuild inside the stage dir; do not copy a host binaries/ tree.
+        exclude("binaries")
     }
-    into(layout.buildDirectory.dir("appResources/common/zapret2-src"))
+    into(zapretStaged)
+}
+
+val buildStagedZapret = tasks.register<Exec>("buildStagedZapret") {
+    dependsOn(stageZapretSource)
+    doFirst { workingDir = zapretStaged.get().asFile }
+    commandLine("make", "mac")
 }
 
 // the Compose plugin collects appResourcesRootDir in this task, so the sources must be staged first
-tasks.matching { it.name == "prepareAppResources" }.configureEach { dependsOn(stageZapretSource) }
+tasks.matching { it.name == "prepareAppResources" }.configureEach { dependsOn(buildStagedZapret) }
 
 compose.desktop {
     application {

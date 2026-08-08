@@ -1,7 +1,10 @@
 #!/bin/sh
-# installs an already built zapret2 tree and starts it
+# stages a sealed copy of the source tree, builds only if needed, installs, and starts zapret2
 # usage : install.sh SRC DST CONFIG
 set -e
+
+PATH="/usr/sbin:/sbin:/usr/bin:/bin"
+export PATH
 
 SRC="$1"
 DST="$2"
@@ -16,11 +19,30 @@ PLIST_DIR=/Library/LaunchDaemons
 	echo "$SRC is not a zapret2 source tree" >&2
 	exit 2
 }
+[ -f "$SRC/Makefile" ] || {
+	echo "$SRC has no Makefile" >&2
+	exit 2
+}
 [ -f "$CFG" ] || {
 	echo "config $CFG does not exist" >&2
 	exit 2
 }
 
+WORK=$(mktemp -d /var/tmp/zapret-build.XXXXXX)
+trap 'rm -rf "$WORK"' EXIT INT HUP TERM
+
+echo "* staging sources under $WORK"
+rsync -a --exclude=.git "$SRC/" "$WORK/"
+
+# DMG / packaged app ships universal binaries from `make mac` at package time.
+if [ -x "$WORK/tpws/tpws" ] || [ -x "$WORK/binaries/my/tpws" ]; then
+	echo "* using prebuilt tpws"
+else
+	echo "* building tpws"
+	make -C "$WORK" mac
+fi
+
+TREE="$WORK"
 INIT="$DST/init.d/macos/zapret2"
 
 echo "* stopping previous instance"
@@ -29,7 +51,7 @@ echo "* stopping previous instance"
 echo "* installing files to $DST"
 mkdir -p "$DST"
 # rsync keeps the relative symlinks of the built binaries. config is written separately
-rsync -a --delete --exclude=/config --exclude=/tmp/ "$SRC/" "$DST/"
+rsync -a --delete --exclude=/config --exclude=/tmp/ "$TREE/" "$DST/"
 mkdir -p "$DST/tmp" "$DST/init.d/macos/custom.d"
 
 echo "* writing config"

@@ -2,6 +2,7 @@ package zapret.domain
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.seconds
 
@@ -25,6 +26,34 @@ class ShellConfigTextTest {
             "\n--filter-tcp=80 --methodeol\n--filter-tcp=443 --disorder\n",
             vars["TPWS_OPT"],
         )
+    }
+
+    @Test
+    fun renderUsesSingleQuotesSoShellMetacharactersStayLiteral() {
+        val value = """$(curl evil)|`id`; "x""""
+        val line = ShellConfigText.render("TPWS_OPT", value)
+        assertEquals(true, line.startsWith("TPWS_OPT='"))
+        val roundTrip = ShellConfigText.parse(line)["TPWS_OPT"]
+        assertEquals(value, roundTrip)
+    }
+
+    @Test
+    fun renderEscapesEmbeddedSingleQuotes() {
+        val line = ShellConfigText.render("X", "it's")
+        assertEquals("X='it'\\''s'", line)
+        assertEquals("it's", ShellConfigText.parse(line)["X"])
+    }
+
+    @Test
+    fun patchMultilineOptRoundTripsAsSingleQuoted() {
+        val text = """
+            TPWS_ENABLE=0
+            TPWS_OPT=""
+        """.trimIndent()
+        val opt = "\n--filter-tcp=80 --methodeol\n--filter-tcp=443 --disorder\n"
+        val patched = ShellConfigText.patch(text, mapOf("TPWS_OPT" to opt))
+        assertEquals(true, patched.contains("TPWS_OPT='"))
+        assertEquals(opt, ShellConfigText.parse(patched)["TPWS_OPT"])
     }
 
     @Test
@@ -57,10 +86,59 @@ class ShellConfigTextTest {
     }
 
     @Test
+    fun wanAllowlistAcceptsEthernetOnly() {
+        assertEquals(true, WanInterface.isAllowedWan(""))
+        assertEquals(true, WanInterface.isAllowedWan("en0"))
+        assertEquals(true, WanInterface.isAllowedWan("en0 en1"))
+        assertEquals(false, WanInterface.isAllowedWan("utun0"))
+        assertEquals(false, WanInterface.isAllowedWan("en0;rm"))
+        assertEquals(false, WanInterface.isAllowedWan("en0\$(id)"))
+    }
+
+    @Test
+    fun configValidationRejectsBadPortsAndIface() {
+        assertEquals(null, ConfigValidation.errorMessage(ZapretConfig()))
+        assertEquals(
+            true,
+            ConfigValidation.errorMessage(ZapretConfig(ifaceWan = "utun0"))?.contains("IFACE_WAN") == true,
+        )
+        assertEquals(
+            true,
+            ConfigValidation.errorMessage(ZapretConfig(tpwsPort = "0"))?.contains("TPPORT") == true,
+        )
+        assertEquals(
+            true,
+            ConfigValidation.errorMessage(ZapretConfig(tpwsPorts = "80;443"))?.contains("TPWS_PORTS") == true,
+        )
+        assertEquals(
+            true,
+            ConfigValidation.errorMessage(ZapretConfig(tpwsOpt = "ok\u0000bad"))?.contains("TPWS_OPT") == true,
+        )
+    }
+
+    @Test
+    fun configValidationRejectsBadListsReload() {
+        assertFailsWith<InstallFailed> {
+            ConfigValidation.requireValidExtras(mapOf(ZapretConfig.LISTS_RELOAD to "/tmp/evil"))
+        }
+    }
+
+    @Test
+    fun envSourceOverrideIgnoredWhenPackaged() {
+        assertEquals(
+            "/tmp/evil",
+            ZapretPaths.envSourceOverride("/tmp/evil", packaged = false)?.path,
+        )
+        assertNull(ZapretPaths.envSourceOverride("/tmp/evil", packaged = true))
+        assertNull(ZapretPaths.envSourceOverride(null, packaged = false))
+    }
+
+    @Test
     fun prerequisitesReadyWhenInstalledWithWan() {
         val ready = Prerequisites(
             hasCompiler = true,
             hasSources = true,
+            hasPrebuiltBinary = false,
             passwordlessControl = false,
             wanInterface = "en0",
             zapretInstalled = true,
@@ -70,16 +148,31 @@ class ShellConfigTextTest {
     }
 
     @Test
-    fun prerequisitesNotReadyToInstallWithoutCompiler() {
+    fun prerequisitesNotReadyToInstallWithoutCompilerOrPrebuilt() {
         val blocked = Prerequisites(
             hasCompiler = false,
             hasSources = true,
+            hasPrebuiltBinary = false,
             passwordlessControl = false,
             wanInterface = "en0",
             zapretInstalled = false,
         )
         assertEquals(false, blocked.canInstall)
         assertEquals(false, blocked.isReady)
+    }
+
+    @Test
+    fun prerequisitesCanInstallWithPrebuiltWithoutCompiler() {
+        val ready = Prerequisites(
+            hasCompiler = false,
+            hasSources = true,
+            hasPrebuiltBinary = true,
+            passwordlessControl = false,
+            wanInterface = "en0",
+            zapretInstalled = false,
+        )
+        assertEquals(true, ready.canInstall)
+        assertEquals(true, ready.isReady)
     }
 
     @Test

@@ -6,14 +6,17 @@ import java.io.File
 object BundledScript {
 
     fun extract(name: String): File {
+        require(name.matches(SAFE_NAME)) { "некорректное имя скрипта: $name" }
         val text = requireNotNull(javaClass.getResourceAsStream("/scripts/$name")) {
             "встроенный скрипт $name отсутствует"
         }.use { it.readBytes().decodeToString() }
 
-        val file = File.createTempFile("zapret-", "-$name")
+        val file = SecureTemp.file("zapret-", "-$name")
         file.writeText(text)
-        file.setExecutable(true, true)
+        SecureTemp.lockDown(file, executable = true)
         file.deleteOnExit()
         return file
     }
+
+    private val SAFE_NAME = Regex("""^[A-Za-z0-9._-]+$""")
 }

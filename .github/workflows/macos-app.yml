@@ -58,8 +58,9 @@ jobs:
 
       # Assets always land on the fixed release tag "MacOS" (not v1.0.0).
       # Example: https://github.com/nikitaSobolev2/zapret2/releases/download/MacOS/Zapret-1.0.0.dmg
+      # Publish only from version tags. workflow_dispatch builds artifacts for testing only.
       - name: Publish GitHub Release asset
-        if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: MacOS
@@ -78,7 +79,7 @@ jobs:
             ```
 
       - name: Update Homebrew cask
-        if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+        if: github.ref_type == 'tag'
         env:
           VERSION: ${{ steps.ver.outputs.version }}
           SHA256: ${{ steps.dmg.outputs.sha256 }}

@@ -8,11 +8,13 @@ import kotlin.time.Duration.Companion.seconds
 data class Prerequisites(
     val hasCompiler: Boolean,
     val hasSources: Boolean,
+    val hasPrebuiltBinary: Boolean,
     val passwordlessControl: Boolean,
     val wanInterface: String?,
     val zapretInstalled: Boolean,
 ) {
-    val canInstall: Boolean get() = hasCompiler && hasSources
+    /** Packaged apps ship tpws; otherwise Xcode CLT is required to compile on install. */
+    val canInstall: Boolean get() = hasSources && (hasPrebuiltBinary || hasCompiler)
 
     val canStart: Boolean get() = zapretInstalled
 
@@ -23,13 +25,17 @@ data class Prerequisites(
     }
 
     companion object {
-        fun probe(passwordless: Boolean): Prerequisites = Prerequisites(
-            hasCompiler = compilerPresent(),
-            hasSources = ZapretPaths.sourceTree() != null,
-            passwordlessControl = passwordless,
-            wanInterface = WanInterface.detect(),
-            zapretInstalled = ZapretPaths.isInstalled,
-        )
+        fun probe(passwordless: Boolean): Prerequisites {
+            val sources = ZapretPaths.sourceTree()
+            return Prerequisites(
+                hasCompiler = compilerPresent(),
+                hasSources = sources != null,
+                hasPrebuiltBinary = sources?.let(ZapretPaths::hasPrebuiltTpws) == true,
+                passwordlessControl = passwordless,
+                wanInterface = WanInterface.detect(),
+                zapretInstalled = ZapretPaths.isInstalled,
+            )
+        }
 
         fun requestCompilerInstall(): CommandResult =
             Shell.run("/usr/bin/xcode-select", "--install", timeout = 15.seconds)

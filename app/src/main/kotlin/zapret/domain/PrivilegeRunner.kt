@@ -19,10 +19,10 @@ class PrivilegeRunner {
         args: List<String> = emptyList(),
         timeout: Duration = DEFAULT_TIMEOUT,
     ): CommandResult {
-        val file = File.createTempFile("zapret-priv-", ".sh")
+        val file = SecureTemp.file("zapret-priv-", ".sh")
         return try {
             file.writeText(script)
-            file.setExecutable(true, true)
+            SecureTemp.lockDown(file, executable = true)
             runScriptFile(file, args, timeout)
         } finally {
             file.delete()

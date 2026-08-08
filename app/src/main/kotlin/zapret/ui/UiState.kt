@@ -21,6 +21,7 @@ data class UiState(
     val prerequisites: Prerequisites = Prerequisites(
         hasCompiler = false,
         hasSources = false,
+        hasPrebuiltBinary = false,
         passwordlessControl = false,
         wanInterface = null,
         zapretInstalled = false,

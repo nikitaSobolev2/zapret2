@@ -17,23 +17,31 @@ object ZapretPaths {
     val transparentPidFile = File("/var/run/tpws_1.pid")
     val socksPidFile = File("/var/run/tpws_2.pid")
 
-    /** Writable copy of the sources, because the tree is compiled in place by `make mac`. */
-    val buildDir: File = File(System.getProperty("user.home"), "Library/Caches/org.zapret.macos.control/src")
-
     val isInstalled: Boolean get() = initScript.canExecute() && config.isFile
 
     /**
-     * The zapret2 tree to install from: an explicit override, the copy bundled into the .app,
-     * or the repository this app lives in when running from Gradle.
+     * The zapret2 tree to install from: an explicit override (dev only), the copy bundled
+     * into the .app, or the repository this app lives in when running from Gradle.
      */
     fun sourceTree(): File? = sequenceOf(
-        System.getenv("ZAPRET_SRC")?.let(::File),
+        envSourceOverride(System.getenv("ZAPRET_SRC"), packaged = bundledResources() != null),
         bundledResources()?.let { File(it, "zapret2-src") },
         repositoryRoot(),
     ).filterNotNull().firstOrNull(::isZapretTree)
 
+    /**
+     * `ZAPRET_SRC` is ignored in a packaged .app so a hostile environment cannot redirect
+     * the install source away from the sealed bundle tree.
+     */
+    fun envSourceOverride(env: String?, packaged: Boolean): File? =
+        env?.takeUnless { packaged }?.let(::File)
+
     fun isZapretTree(dir: File): Boolean =
         File(dir, "init.d/macos/zapret2").isFile && File(dir, "Makefile").isFile
+
+    /** True when the tree already has a mac `tpws` binary (packaged DMG or prior `make mac`). */
+    fun hasPrebuiltTpws(dir: File): Boolean =
+        File(dir, "tpws/tpws").canExecute() || File(dir, "binaries/my/tpws").canExecute()
 
     /** Set by the Compose packaging when the app runs from a bundle. */
     private fun bundledResources(): File? =

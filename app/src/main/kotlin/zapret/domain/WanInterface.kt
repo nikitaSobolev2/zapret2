@@ -36,6 +36,15 @@ object WanInterface {
 
     fun isTunnel(name: String): Boolean = TUNNEL.containsMatchIn(name)
 
+    /** Empty (auto) or space-separated physical `en*` names only — never tunnels or shell metacharacters. */
+    fun isAllowedWan(spec: String): Boolean {
+        val trimmed = spec.trim()
+        if (trimmed.isEmpty()) return true
+        return trimmed.split(Regex("\\s+")).all { WAN_TOKEN.matches(it) }
+    }
+
+    private val WAN_TOKEN = Regex("""^en\d+$""")
+
     private fun isActiveWithInet(name: String): Boolean {
         val text = Shell.run("/sbin/ifconfig", name, timeout = PROBE).takeIf { it.ok }?.output ?: return false
         return text.contains("status: active") && text.contains("inet ")

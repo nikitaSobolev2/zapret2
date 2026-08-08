@@ -3,6 +3,10 @@
 Compose Desktop control app for zapret2: install, start/stop, settings, uninstall.
 Works with a split-tunnel corporate VPN when `IFACE_WAN` is the physical interface (usually `en0`).
 
+Packaging runs `make mac` into the staged source tree, so the DMG ships a universal prebuilt
+`tpws` (plus `ip2net` / `mdig`). Install skips compile when that binary is present — Xcode CLT
+is only needed for source-only / Gradle-dev trees without a prior build.
+
 ## Install with Homebrew
 
 ```bash
@@ -36,22 +40,28 @@ xattr -cr /Applications/Zapret.app
 2. Open the DMG, drag `Zapret.app` to Applications.
 3. Launch and use the power button to install zapret2 (administrator password).
 
-## Release / maintainers
+## Release checklist
 
-Upload the DMG to the GitHub release tagged **`MacOS`** as `Zapret-<version>.dmg`, then bump
-`version` / `sha256` in [`Casks/zapret.rb`](../Casks/zapret.rb).
-
-URL pattern:
-
-```text
-https://github.com/nikitaSobolev2/zapret2/releases/download/MacOS/Zapret-<version>.dmg
-```
+1. Tag `vX.Y.Z` and push the tag (CI workflow `macos-app`).
+2. CI packages the DMG, uploads it to the fixed GitHub release tag **`MacOS`**, and bumps
+   [`Casks/zapret.rb`](../Casks/zapret.rb) `version` / `sha256` on the default branch.
+3. Verify the asset URL and checksum match the cask:
+   `https://github.com/nikitaSobolev2/zapret2/releases/download/MacOS/Zapret-<version>.dmg`
+4. `workflow_dispatch` only builds and uploads a CI artifact — it does **not** publish or bump the cask.
 
 Manual local DMG:
 
 ```bash
 make app-dmg
 # → app/build/compose/binaries/main/dmg/Zapret-<version>.dmg
+```
+
+### Gatekeeper (unsigned builds)
+
+The DMG is not Apple-notarized. First launch may need right-click → Open, or:
+
+```bash
+xattr -cr /Applications/Zapret.app
 ```
 
 Cask token: `zapret` (`Casks/zapret.rb`).

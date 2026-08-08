@@ -17,12 +17,22 @@ class PasswordlessControl(private val privileges: PrivilegeRunner) {
         return probe.ok
     }
 
-    fun enable(): CommandResult = privileges.runScript(INSTALL, args = listOf(user, ZapretPaths.initScript.absolutePath))
+    fun enable(): CommandResult {
+        if (!ConfigValidation.isAllowedUsername(user)) {
+            throw InstallFailed("Некорректное имя пользователя для sudoers: $user")
+        }
+        val init = ZapretPaths.initScript.absolutePath
+        if (init != EXPECTED_INIT) {
+            throw InstallFailed("Некорректный путь init-скрипта")
+        }
+        return privileges.runScript(INSTALL, args = listOf(user, init))
+    }
 
     fun disable(): CommandResult = privileges.runScript(REMOVE)
 
     private companion object {
         const val SUDOERS = "/etc/sudoers.d/zapret2"
+        const val EXPECTED_INIT = "/opt/zapret2/init.d/macos/zapret2"
 
         // $1 = user, $2 = init script path. Validated with visudo before being installed.
         val INSTALL = """
@@ -32,6 +42,16 @@ class PasswordlessControl(private val privileges: PrivilegeRunner) {
             export PATH
             user="${'$'}1"
             init="${'$'}2"
+            case "${'$'}user" in
+                ""|*[!A-Za-z0-9._-]*)
+                    echo "invalid sudoers username" >&2
+                    exit 1
+                    ;;
+            esac
+            if [ "${'$'}init" != "$EXPECTED_INIT" ]; then
+                echo "invalid init script path" >&2
+                exit 1
+            fi
             tmp="${'$'}(mktemp)"
             umask 337
             printf '%s ALL=(root) NOPASSWD: %s start, %s stop, %s restart\n' "${'$'}user" "${'$'}init" "${'$'}init" "${'$'}init" >"${'$'}tmp"

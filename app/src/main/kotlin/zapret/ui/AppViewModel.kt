@@ -50,6 +50,7 @@ class AppViewModel(private val scope: CoroutineScope) {
 
     init {
         reload()
+        syncPollAttention()
         scope.launch {
             withContext(Dispatchers.IO) { refreshPrerequisites() }
             poller.statuses().collect { state = state.withStatus(it) }
@@ -64,22 +65,27 @@ class AppViewModel(private val scope: CoroutineScope) {
         state = state.copy(screen = screen)
         windowVisible = true
         panelVisible = false
+        syncPollAttention()
     }
 
     fun hideWindow() {
         windowVisible = false
+        syncPollAttention()
     }
 
     fun togglePanel() {
         panelVisible = !panelVisible
+        syncPollAttention()
     }
 
     fun showPanel() {
         panelVisible = true
+        syncPollAttention()
     }
 
     fun hidePanel() {
         panelVisible = false
+        syncPollAttention()
     }
 
     fun dismissNotice() {
@@ -93,12 +99,12 @@ class AppViewModel(private val scope: CoroutineScope) {
 
     fun install() {
         val ready = state.prerequisites
-        if (!ready.hasCompiler) {
-            state = state.copy(notice = Notice("Сначала установите инструменты разработчика (Xcode CLT).", isError = true))
-            return
-        }
         if (!ready.hasSources) {
             state = state.copy(notice = Notice("Исходники zapret2 не найдены. Переустановите приложение из DMG.", isError = true))
+            return
+        }
+        if (!ready.canInstall) {
+            state = state.copy(notice = Notice("Сначала установите инструменты разработчика (Xcode CLT).", isError = true))
             return
         }
         operation("Установка") { installer.install { step -> state = state.copy(busy = step) } }
@@ -121,6 +127,10 @@ class AppViewModel(private val scope: CoroutineScope) {
             Prerequisites.requestCompilerInstall()
             refreshPrerequisites()
         }
+    }
+
+    private fun syncPollAttention() {
+        poller.setAttentive(windowVisible || panelVisible)
     }
 
     private fun reload() {
