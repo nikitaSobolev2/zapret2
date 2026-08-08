@@ -57,6 +57,32 @@ class ShellConfigTextTest {
     }
 
     @Test
+    fun prerequisitesReadyWhenInstalledWithWan() {
+        val ready = Prerequisites(
+            hasCompiler = true,
+            hasSources = true,
+            passwordlessControl = false,
+            wanInterface = "en0",
+            zapretInstalled = true,
+        )
+        assertEquals(true, ready.isReady)
+        assertEquals(true, ready.canStart)
+    }
+
+    @Test
+    fun prerequisitesNotReadyToInstallWithoutCompiler() {
+        val blocked = Prerequisites(
+            hasCompiler = false,
+            hasSources = true,
+            passwordlessControl = false,
+            wanInterface = "en0",
+            zapretInstalled = false,
+        )
+        assertEquals(false, blocked.canInstall)
+        assertEquals(false, blocked.isReady)
+    }
+
+    @Test
     fun lastLinePrefersZapretDiagnostics() {
         val result = CommandResult(
             1,

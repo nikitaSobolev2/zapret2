@@ -54,6 +54,8 @@ compose.desktop {
                 bundleID = "org.zapret.macos.control"
                 dockName = "Zapret"
                 minimumSystemVersion = "12.0"
+                // unsigned local DMG: user may need right-click → Open the first time (Gatekeeper)
+                appCategory = "public.app-category.utilities"
             }
         }
     }

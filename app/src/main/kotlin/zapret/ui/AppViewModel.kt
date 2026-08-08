@@ -13,6 +13,7 @@ import zapret.domain.ConfigWriter
 import zapret.domain.DaemonStatus
 import zapret.domain.InstallService
 import zapret.domain.PasswordlessControl
+import zapret.domain.Prerequisites
 import zapret.domain.PrivilegeEscalationCancelled
 import zapret.domain.PrivilegeRunner
 import zapret.domain.StatusPoller
@@ -49,7 +50,10 @@ class AppViewModel(private val scope: CoroutineScope) {
 
     init {
         reload()
-        scope.launch { poller.statuses().collect { state = state.withStatus(it) } }
+        scope.launch {
+            withContext(Dispatchers.IO) { refreshPrerequisites() }
+            poller.statuses().collect { state = state.withStatus(it) }
+        }
     }
 
     fun show(screen: Screen) {
@@ -87,7 +91,18 @@ class AppViewModel(private val scope: CoroutineScope) {
         if (state.running) operation("Остановка") { service.stop() } else operation("Запуск") { service.start() }
     }
 
-    fun install() = operation("Установка") { installer.install { step -> state = state.copy(busy = step) } }
+    fun install() {
+        val ready = state.prerequisites
+        if (!ready.hasCompiler) {
+            state = state.copy(notice = Notice("Сначала установите инструменты разработчика (Xcode CLT).", isError = true))
+            return
+        }
+        if (!ready.hasSources) {
+            state = state.copy(notice = Notice("Исходники zapret2 не найдены. Переустановите приложение из DMG.", isError = true))
+            return
+        }
+        operation("Установка") { installer.install { step -> state = state.copy(busy = step) } }
+    }
 
     fun applyConfig(config: ZapretConfig) = operation("Применение настроек") { configWriter.apply(config) }
 
@@ -100,11 +115,29 @@ class AppViewModel(private val scope: CoroutineScope) {
             if (enabled) passwordless.enable() else passwordless.disable()
         }
 
+    fun installCompilerTools() {
+        if (state.busy != null) return
+        scope.launch(Dispatchers.IO) {
+            Prerequisites.requestCompilerInstall()
+            refreshPrerequisites()
+        }
+    }
+
     private fun reload() {
+        val passwordlessOn = runCatching { passwordless.isEnabled() }.getOrDefault(false)
         state = state.copy(
             installed = ZapretPaths.isInstalled,
             config = configStore.read() ?: state.config,
-            passwordless = runCatching { passwordless.isEnabled() }.getOrDefault(false),
+            passwordless = passwordlessOn,
+            prerequisites = Prerequisites.probe(passwordlessOn),
+        )
+    }
+
+    private fun refreshPrerequisites() {
+        val passwordlessOn = runCatching { passwordless.isEnabled() }.getOrDefault(false)
+        state = state.copy(
+            passwordless = passwordlessOn,
+            prerequisites = Prerequisites.probe(passwordlessOn),
         )
     }
 

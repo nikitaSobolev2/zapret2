@@ -1,6 +1,7 @@
 package zapret.ui
 
 import zapret.domain.DaemonStatus
+import zapret.domain.Prerequisites
 import zapret.domain.ZapretConfig
 import kotlin.time.Duration
 import kotlin.time.TimeSource
@@ -17,6 +18,13 @@ data class UiState(
     val busy: String? = null,
     val notice: Notice? = null,
     val passwordless: Boolean = false,
+    val prerequisites: Prerequisites = Prerequisites(
+        hasCompiler = false,
+        hasSources = false,
+        passwordlessControl = false,
+        wanInterface = null,
+        zapretInstalled = false,
+    ),
     private val uptimeAt: TimeSource.Monotonic.ValueTimeMark? = null,
 ) {
     val running: Boolean get() = status.running

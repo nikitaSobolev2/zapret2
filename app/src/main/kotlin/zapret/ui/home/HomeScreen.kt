@@ -37,6 +37,7 @@ fun HomeScreen(
     state: UiState,
     onToggle: () -> Unit,
     onOpen: (Screen) -> Unit,
+    onInstallCompiler: () -> Unit = {},
     mod: Modifier = Modifier,
 ) {
     Column(
@@ -61,7 +62,10 @@ fun HomeScreen(
             textAlign = TextAlign.Center,
         )
 
-        Spacer(Modifier.height(Dimens.section))
+        Spacer(Modifier.height(Dimens.xl))
+        PrerequisitesCard(state.prerequisites, onInstallCompiler)
+
+        Spacer(Modifier.height(Dimens.md))
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Dimens.sm + Dimens.xs / 2)) {
             val open = { onOpen(Screen.SETTINGS) }
             InfoCard("Режим фильтра", state.config.filterMode.label, onClick = open)

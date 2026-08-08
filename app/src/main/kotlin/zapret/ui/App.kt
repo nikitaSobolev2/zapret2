@@ -33,6 +33,7 @@ fun App(model: AppViewModel) = ZapretTheme {
                             state = state,
                             onToggle = model::toggle,
                             onOpen = model::show,
+                            onInstallCompiler = model::installCompilerTools,
                         )
 
                         Screen.SETTINGS -> SettingsScreen(
