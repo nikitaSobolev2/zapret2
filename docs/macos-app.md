@@ -53,19 +53,20 @@ xattr -cr /Applications/Zapret.app
 
 ## Install from DMG
 
-1. Download [Zapret-1.0.1.dmg](https://github.com/nikitaSobolev2/zapret2/releases/download/MacOS/Zapret-1.0.1.dmg)
-   (release tag [MacOS](https://github.com/nikitaSobolev2/zapret2/releases/tag/MacOS)).
+1. Download `Zapret-<version>.dmg` from the latest GitHub release
+   (e.g. [v1.1.0](https://github.com/nikitaSobolev2/zapret2/releases/latest)).
 2. Open the DMG, drag `Zapret.app` to Applications.
 3. Launch and use the power button to install zapret2 (administrator password).
 
 ## Release checklist
 
-1. Tag `vX.Y.Z` and push the tag (CI workflow `macos-app`).
-2. CI packages the DMG, uploads it to the fixed GitHub release tag **`MacOS`**, and bumps
-   [`Casks/zapret.rb`](../Casks/zapret.rb) `version` / `sha256` on the default branch.
-3. Verify the asset URL and checksum match the cask:
-   `https://github.com/nikitaSobolev2/zapret2/releases/download/MacOS/Zapret-<version>.dmg`
-4. `workflow_dispatch` only builds and uploads a CI artifact — it does **not** publish or bump the cask.
+1. Tag `vX.Y.Z` and push the tag.
+2. Workflow **`build`** creates the GitHub Release and uploads source/binary archives.
+3. Workflow **`macOS app`** builds the DMG, attaches `Zapret-<version>.dmg` to the **same**
+   `vX.Y.Z` release, and bumps [`Casks/zapret.rb`](../Casks/zapret.rb) `version` / `sha256`.
+4. Homebrew URL shape:
+   `https://github.com/nikitaSobolev2/zapret2/releases/download/v<version>/Zapret-<version>.dmg`
+5. `workflow_dispatch` on `macOS app` only builds a CI artifact — it does **not** publish or bump the cask.
 
 Manual local DMG:
 

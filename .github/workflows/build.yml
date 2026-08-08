@@ -607,8 +607,15 @@ jobs:
           fail_on_unmatched_files: true
           prerelease: false
           draft: false
+          # macOS DMG is attached by workflow macos-app.yml to this same tag.
           body: |
             ### zapret2 ${{ github.ref_name }}
+
+            Source / binary bundles below. The **Zapret-*.dmg** macOS app is uploaded by the
+            separate `macOS app` workflow onto this same release when the tag build succeeds.
+
+            Homebrew cask tracks `vX.Y.Z` assets:
+            `https://github.com/nikitaSobolev2/zapret2/releases/download/${{ github.ref_name }}/Zapret-*.dmg`
           files: |
             zapret2*.tar.gz
             zapret2*.zip

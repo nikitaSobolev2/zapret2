@@ -2,14 +2,24 @@ cask "zapret" do
   version "1.0.1"
   sha256 "29c68efd9640741d94087d04569a3c72a2b2f1feddbcd00ddd21cdf1aa443494"
 
-  url "https://github.com/nikitaSobolev2/zapret2/releases/download/MacOS/Zapret-#{version}.dmg"
+  url "https://github.com/nikitaSobolev2/zapret2/releases/download/v#{version}/Zapret-#{version}.dmg"
   name "Zapret"
   desc "macOS control app for zapret2 (DPI bypass via tpws + PF)"
   homepage "https://github.com/nikitaSobolev2/zapret2"
 
   livecheck do
-    url "https://github.com/nikitaSobolev2/zapret2/releases?q=MacOS"
+    url :homepage
     regex(/Zapret[._-]v?(\d+(?:\.\d+)+)\.dmg/i)
+    strategy :github_releases do |json, regex|
+      json.filter_map do |release|
+        next if release["draft"] || release["prerelease"]
+
+        release["assets"]&.filter_map do |asset|
+          match = asset["name"]&.match(regex)
+          match[1] if match
+        end
+      end.flatten
+    end
   end
 
   depends_on macos: :monterey

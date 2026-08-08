@@ -68,17 +68,15 @@ jobs:
           path: ${{ steps.dmg.outputs.path }}
           if-no-files-found: error
 
-      # Publish only from version tags. workflow_dispatch builds artifacts for testing only.
-      # 1) Attach DMG to the same tag release as build.yml (v1.x.y) so it shows on that release page.
-      # 2) Also mirror to fixed tag "MacOS" for the Homebrew cask URL.
+      # Same GitHub Release as build.yml (tag vX.Y.Z). Homebrew reads this release, not MacOS.
       - name: Attach DMG to version release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
+          name: zapret2 ${{ github.ref_name }}
           files: ${{ steps.dmg.outputs.path }}
           fail_on_unmatched_files: true
-          # Do not overwrite the source-release notes from build.yml
           append_body: true
           body: |
 
@@ -86,25 +84,10 @@ jobs:
 
             DMG: https://github.com/nikitaSobolev2/zapret2/releases/download/${{ github.ref_name }}/${{ steps.dmg.outputs.name }}
 
-      - name: Publish DMG on MacOS release (Homebrew)
-        if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: MacOS
-          name: Zapret macOS
-          files: ${{ steps.dmg.outputs.path }}
-          fail_on_unmatched_files: true
-          body: |
-            ### Zapret macOS ${{ steps.ver.outputs.version }}
-
-            DMG: https://github.com/nikitaSobolev2/zapret2/releases/download/MacOS/Zapret-${{ steps.ver.outputs.version }}.dmg
-
-            Also on the version release: https://github.com/nikitaSobolev2/zapret2/releases/tag/${{ github.ref_name }}
-
-            Install with Homebrew:
             ```
             brew tap nikitaSobolev2/zapret2 https://github.com/nikitaSobolev2/zapret2
             brew install --cask zapret
+            brew upgrade --cask zapret
             ```
 
       - name: Update Homebrew cask
