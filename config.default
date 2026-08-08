@@ -75,7 +75,8 @@ TPPORT_SOCKS=987
 # <HOSTLIST_NOAUTO> appends ipset/zapret-hosts-auto.txt as normal list
 TPWS_SOCKS_OPT="
 --filter-tcp=80 --methodeol <HOSTLIST> --new
---filter-tcp=443 --tlsrec=1 --split-pos=midsld --disorder <HOSTLIST>
+--filter-tcp=443 --hostlist-domains=updates.discord.com --split-pos=midsld --oob --new
+--filter-tcp=443 --tlsrec=sni --split-pos=midsld --disorder <HOSTLIST>
 "
 
 TPWS_ENABLE=0
@@ -83,9 +84,12 @@ TPWS_ENABLE=0
 TPPORT=988
 # ports redirected to tpws by the PF rdr rules
 TPWS_PORTS=80,443
+# updates.discord.com: Discord macOS updater uses TLS1.2 without supported_versions;
+# tlsrec breaks that handshake — use midsld+oob there, keep tlsrec+disorder for the rest.
 TPWS_OPT="
 --filter-tcp=80 --methodeol <HOSTLIST> --new
---filter-tcp=443 --tlsrec=1 --split-pos=midsld --disorder <HOSTLIST>
+--filter-tcp=443 --hostlist-domains=updates.discord.com --split-pos=midsld --oob --new
+--filter-tcp=443 --tlsrec=sni --split-pos=midsld --disorder <HOSTLIST>
 "
 
 
