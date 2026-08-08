@@ -4,6 +4,8 @@ import zapret.domain.CombinedStatus
 import zapret.domain.DaemonStatus
 import zapret.domain.Prerequisites
 import zapret.domain.TgWsProxyConfig
+import zapret.domain.UpdateInfo
+import zapret.domain.UpdatePhase
 import zapret.domain.ZapretConfig
 import kotlin.time.Duration
 import kotlin.time.TimeSource
@@ -22,6 +24,13 @@ data class UiState(
     val busy: String? = null,
     val notice: Notice? = null,
     val passwordless: Boolean = false,
+    val autoUpdate: Boolean = true,
+    val appVersion: String = "0.0.0",
+    val updateAvailable: UpdateInfo? = null,
+    val updatePhase: UpdatePhase = UpdatePhase.Idle,
+    val updateProgressLabel: String = "",
+    val showUpdateModal: Boolean = false,
+    val updateUpToDate: Boolean = false,
     val prerequisites: Prerequisites = Prerequisites(
         hasCompiler = false,
         hasSources = false,

@@ -14,6 +14,14 @@ The DMG also ships a headless **tg-ws-proxy** sidecar — vendored MIT code by
 The Compose app starts/stops it with Zapret (user process on `127.0.0.1:1443`, no sudo).
 Settings credit the author with a link to that repository.
 
+### In-app updates
+
+Settings → **Обновления**: toggle **Автообновление** (default on). When enabled, the app checks
+GitHub Releases on launch and, if a newer `Zapret-*.dmg` exists, downloads and replaces the
+`.app` (modal with **Отмена**). Manual **Проверить обновления** / **Обновить сейчас** work the
+same path. Prefs: `~/Library/Application Support/Zapret/app-prefs.json`. Same DMG as Homebrew
+(`vX.Y.Z` release assets). Unsigned builds may still need `xattr -cr` once after replace.
+
 ### Telegram Desktop fix
 
 1. Start Zapret (power button → status «Работает»).

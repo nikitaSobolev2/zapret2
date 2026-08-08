@@ -42,6 +42,9 @@ fun App(model: AppViewModel) = ZapretTheme {
                             onInstall = model::install,
                             onUninstall = model::uninstall,
                             onPasswordless = model::setPasswordless,
+                            onAutoUpdate = model::setAutoUpdate,
+                            onCheckUpdates = model::checkForUpdates,
+                            onUpdateNow = { model.startUpdate() },
                         )
                     }
                     Spacer(Modifier.height(Dimens.xl))
@@ -55,5 +58,7 @@ fun App(model: AppViewModel) = ZapretTheme {
             BottomNav(state.screen, model::show)
             Spacer(Modifier.height(Dimens.lg))
         }
+
+        UpdateDialog(state = state, onCancel = model::cancelUpdate)
     }
 }

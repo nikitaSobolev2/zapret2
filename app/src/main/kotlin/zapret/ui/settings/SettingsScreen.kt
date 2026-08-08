@@ -38,6 +38,9 @@ fun SettingsScreen(
     onInstall: () -> Unit,
     onUninstall: (UninstallScope) -> Unit,
     onPasswordless: (Boolean) -> Unit,
+    onAutoUpdate: (Boolean) -> Unit,
+    onCheckUpdates: () -> Unit,
+    onUpdateNow: () -> Unit,
     mod: Modifier = Modifier,
 ) {
     var draft by remember(state.config) { mutableStateOf(state.config) }
@@ -263,6 +266,45 @@ fun SettingsScreen(
                 onChange = onPasswordless,
                 description = "sudo без пароля только для start/stop/restart. Включение спросит пароль один раз.",
             )
+        }
+
+        Section(
+            title = "Обновления",
+            description = "Текущая версия приложения: ${state.appVersion}. " +
+                "Обновления скачиваются с GitHub Releases (тот же DMG, что и для Homebrew).",
+        ) {
+            SwitchRow(
+                label = "Автообновление",
+                checked = state.autoUpdate,
+                onChange = onAutoUpdate,
+                description = "При запуске проверять и устанавливать новую версию",
+            )
+            AccentButton(
+                text = "Проверить обновления",
+                enabled = editable && !state.showUpdateModal,
+                onClick = onCheckUpdates,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            state.updateAvailable?.let { info ->
+                Text(
+                    text = "Доступна версия ${info.version}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Palette.accent,
+                )
+                AccentButton(
+                    text = "Обновить сейчас",
+                    enabled = editable && !state.showUpdateModal,
+                    onClick = onUpdateNow,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (state.updateUpToDate && state.updateAvailable == null) {
+                Text(
+                    text = "Обновлений нет",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Palette.textMuted,
+                )
+            }
         }
 
         if (state.installed) {

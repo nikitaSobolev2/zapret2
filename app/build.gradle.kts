@@ -16,6 +16,30 @@ kotlin {
     jvmToolchain(21)
 }
 
+val generatedResources = layout.buildDirectory.dir("generated/zapretResources")
+
+val writeAppVersion = tasks.register("writeAppVersion") {
+    val outDir = generatedResources
+    val appVersion = provider { project.version.toString() }
+    inputs.property("appVersion", appVersion)
+    outputs.dir(outDir)
+    doLast {
+        val dir = outDir.get().asFile
+        dir.mkdirs()
+        File(dir, "version.txt").writeText(appVersion.get().trim() + "\n")
+    }
+}
+
+sourceSets {
+    main {
+        resources.srcDir(generatedResources)
+    }
+}
+
+tasks.named("processResources") {
+    dependsOn(writeAppVersion)
+}
+
 tasks.test {
     useJUnitPlatform()
 }
