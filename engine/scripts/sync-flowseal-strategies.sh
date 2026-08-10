@@ -128,6 +128,43 @@ elif [ -d "$SRC/macos/Payload/lists" ]; then
     /usr/bin/rsync -a "$SRC/macos/Payload/lists/" "$DEST/default-lists/"
 fi
 
+# Flowseal packs apply QUIC fake only to list-general; with ipset=none that
+# leaves googlevideo HTTP/3 without desync (site loads, video hangs). Inject
+# a list-google UDP/443 profile after the first QUIC block when missing.
+GOOGLE_UDP='--filter-udp=443
+--hostlist="@LISTS@/list-google.txt"
+--dpi-desync=fake
+--dpi-desync-repeats=11
+--dpi-desync-fake-quic="@BASE@/bin/quic_initial_www_google_com.bin"
+--new
+'
+for CONF in "$STRATEGIES"/general*.conf.in; do
+    [ -f "$CONF" ] || continue
+    /usr/bin/grep -q 'list-google.txt' "$CONF" || continue
+    if /usr/bin/awk '
+        prev ~ /^--filter-udp=443$/ && $0 == "--hostlist=\"@LISTS@/list-google.txt\"" { found=1 }
+        { prev=$0 }
+        END { exit found ? 0 : 1 }
+    ' "$CONF"; then
+        continue
+    fi
+    /usr/bin/awk -v add="$GOOGLE_UDP" '
+        BEGIN { done=0 }
+        {
+            print
+            if (!done && $0 ~ /quic_initial_www_google_com\.bin/) {
+                if ((getline line) > 0) {
+                    print line
+                    if (line == "--new") {
+                        printf "%s", add
+                        done=1
+                    }
+                }
+            }
+        }
+    ' "$CONF" >"$CONF.tmp" && /bin/mv "$CONF.tmp" "$CONF"
+done
+
 # rebuild strategies.tsv from conf.in files
 : >"$TSV"
 for CONF in "$STRATEGIES"/general*.conf.in; do

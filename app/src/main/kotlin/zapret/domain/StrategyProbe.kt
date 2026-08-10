@@ -148,13 +148,21 @@ class StrategyProbe(
                 }
                 val discord = probeHost("discord.com")
                 val youtube = probeHost("www.youtube.com")
+                // Site OK ≠ playback OK; exercise the video CDN (TCP) too.
+                val googlevideo = probeUrl("https://rr3---sn-5goeenes.googlevideo.com/generate_204")
                 val control = probeHost("www.apple.com")
-                val row = StrategyProbeRow(id, discord, youtube, control)
+                val row = StrategyProbeRow(
+                    id,
+                    discord,
+                    mergeHostMetrics(youtube, googlevideo),
+                    control,
+                )
                 rows += row
                 appendLog(
                     "$id score=${row.score} discord=${discord.successes}/${discord.attempts}" +
                         "@${discord.avgLatencyMs ?: "-"}ms yt=${youtube.successes}/${youtube.attempts}" +
-                        "@${youtube.avgLatencyMs ?: "-"}ms ctrl=${control.successes}/${control.attempts}" +
+                        "@${youtube.avgLatencyMs ?: "-"}ms gv=${googlevideo.successes}/${googlevideo.attempts}" +
+                        "@${googlevideo.avgLatencyMs ?: "-"}ms ctrl=${control.successes}/${control.attempts}" +
                         "@${control.avgLatencyMs ?: "-"}ms",
                 )
                 if (row.usable && (row.score > bestScore || (row.score == bestScore && index < bestIndex))) {
@@ -199,22 +207,23 @@ class StrategyProbe(
         return false
     }
 
-    private fun probeHost(host: String): HostProbeMetrics {
+    private fun probeHost(host: String): HostProbeMetrics = probeUrl("https://$host/")
+
+    private fun probeUrl(url: String): HostProbeMetrics {
         val latencies = mutableListOf<Int>()
         repeat(SAMPLES) {
             if (cancelRequested.get()) {
                 return HostProbeMetrics.fromLatencies(latencies, attempts = SAMPLES)
             }
-            val sample = sampleHttps(host) ?: return@repeat
+            val sample = sampleHttpsUrl(url) ?: return@repeat
             latencies += sample
-            // Brief gap so we measure stability, not one burst.
             Thread.sleep(SAMPLE_GAP_MS)
         }
         return HostProbeMetrics.fromLatencies(latencies, attempts = SAMPLES)
     }
 
     /** Returns latency ms on HTTP 200–499, else null. */
-    private fun sampleHttps(host: String): Int? {
+    private fun sampleHttpsUrl(url: String): Int? {
         val result = Shell.run(
             "/usr/bin/curl",
             "-sS",
@@ -223,15 +232,24 @@ class StrategyProbe(
             "--connect-timeout", "3",
             "--max-time", "8",
             "-L",
-            "https://$host/",
+            url,
             timeout = 12.seconds,
         )
         val parts = result.output.trim().split(Regex("\\s+"))
         if (parts.size < 2) return null
         val http = parts[0].toIntOrNull() ?: return null
+        // generate_204 returns 204; treat that as success too.
         if (!(result.ok && http in 200..499)) return null
         val seconds = parts[1].toDoubleOrNull() ?: return null
         return (seconds * 1000.0).toInt().coerceAtLeast(1)
+    }
+
+    private fun mergeHostMetrics(a: HostProbeMetrics, b: HostProbeMetrics): HostProbeMetrics {
+        val attempts = a.attempts + b.attempts
+        val successes = a.successes + b.successes
+        val lats = listOfNotNull(a.avgLatencyMs, b.avgLatencyMs)
+        val avg = lats.takeIf { it.isNotEmpty() }?.average()?.toInt()
+        return HostProbeMetrics(successes = successes, attempts = attempts, avgLatencyMs = avg)
     }
 
     private fun appendLog(line: String) {
