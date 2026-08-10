@@ -87,13 +87,18 @@ class AppUpdateService(
     }
 
     private fun fetchCaskSha256(version: String): String? {
-        val url = "https://raw.githubusercontent.com/$TRUSTED_REPO/main/Casks/zapret.rb"
-        return runCatching {
-            val text = getText(url)
-            val caskVersion = Regex("""version\s+"([^"]+)"""").find(text)?.groupValues?.get(1)
-            if (caskVersion != null && caskVersion != version) return@runCatching null
-            Regex("""sha256\s+"([a-fA-F0-9]{64})"""").find(text)?.groupValues?.get(1)?.lowercase()
-        }.getOrNull()
+        // Repo default branch is master; keep main as fallback for forks/renames.
+        for (branch in listOf("master", "main")) {
+            val url = "https://raw.githubusercontent.com/$TRUSTED_REPO/$branch/Casks/zapret.rb"
+            val sha = runCatching {
+                val text = getText(url)
+                val caskVersion = Regex("""version\s+"([^"]+)"""").find(text)?.groupValues?.get(1)
+                if (caskVersion != null && caskVersion != version) return@runCatching null
+                Regex("""sha256\s+"([a-fA-F0-9]{64})"""").find(text)?.groupValues?.get(1)?.lowercase()
+            }.getOrNull()
+            if (sha != null) return sha
+        }
+        return null
     }
 
     /**
@@ -297,22 +302,27 @@ class AppUpdateService(
 
         /** GitHub asset `digest` field or companion `*.dmg.sha256` / body checksum. */
         fun extractSha256(json: String, assetName: String): String? {
+            // Prefer digest next to this asset's download URL (uploader blobs make name↔digest far apart).
+            val nearUrl = Regex(
+                """"digest"\s*:\s*"sha256:([a-fA-F0-9]{64})"[\s\S]{0,300}?"browser_download_url"\s*:\s*"https://[^"]+/${Regex.escape(assetName)}""",
+            ).find(json)?.groupValues?.get(1)
+            if (nearUrl != null) return nearUrl.lowercase()
+
+            val urlThenDigest = Regex(
+                """"browser_download_url"\s*:\s*"https://[^"]+/${Regex.escape(assetName)}"[\s\S]{0,300}?"digest"\s*:\s*"sha256:([a-fA-F0-9]{64})""",
+            ).find(json)?.groupValues?.get(1)
+            if (urlThenDigest != null) return urlThenDigest.lowercase()
+
+            // name … digest can span the nested uploader object (~1–2 KB).
             val digestNearName = Regex(
-                """"name"\s*:\s*"${Regex.escape(assetName)}"[\s\S]{0,400}?"digest"\s*:\s*"sha256:([a-fA-F0-9]{64})""",
+                """"name"\s*:\s*"${Regex.escape(assetName)}"[\s\S]{0,4000}?"digest"\s*:\s*"sha256:([a-fA-F0-9]{64})""",
             ).find(json)?.groupValues?.get(1)
             if (digestNearName != null) return digestNearName.lowercase()
 
             val digestBeforeName = Regex(
-                """"digest"\s*:\s*"sha256:([a-fA-F0-9]{64})"[\s\S]{0,400}?"name"\s*:\s*"${Regex.escape(assetName)}""",
+                """"digest"\s*:\s*"sha256:([a-fA-F0-9]{64})"[\s\S]{0,4000}?"name"\s*:\s*"${Regex.escape(assetName)}""",
             ).find(json)?.groupValues?.get(1)
             if (digestBeforeName != null) return digestBeforeName.lowercase()
-
-            val shaAsset = Regex(
-                """"browser_download_url"\s*:\s*"(https://[^"]+/${Regex.escape(assetName)}\.sha256)"""",
-            ).find(json)?.groupValues?.get(1)
-            if (shaAsset != null) {
-                // Caller may fetch separately; keep URL hash from body if present.
-            }
 
             val bodyHex = Regex(
                 """(?i)(?:sha256|SHA-256)[=:\s]+([a-fA-F0-9]{64}).{0,80}${Regex.escape(assetName)}""",

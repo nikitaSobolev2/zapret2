@@ -40,6 +40,40 @@ class AppUpdateParseTest {
     }
 
     @Test
+    fun extractSha256FindsDigestPastUploaderBlob() {
+        val json = """
+            {
+              "tag_name": "v2.1.1",
+              "assets": [{
+                "name": "Zapret-2.1.1.dmg",
+                "uploader": { "login": "github-actions[bot]", "id": 41898282, "type": "Bot",
+                  "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+                  "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+                  "html_url": "https://github.com/apps/github-actions",
+                  "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+                  "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other}",
+                  "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+                  "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+                  "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+                  "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+                  "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+                  "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+                  "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+                  "site_admin": false },
+                "content_type": "application/x-apple-diskimage",
+                "state": "uploaded",
+                "size": 96649532,
+                "digest": "sha256:c7128a571bec0388b32fa2e358c0e8e35d15746a3132f4217052f203cbf04e14",
+                "browser_download_url": "https://github.com/nikitaSobolev2/zapret2/releases/download/v2.1.1/Zapret-2.1.1.dmg"
+              }]
+            }
+        """.trimIndent()
+        val info = AppUpdateService.parseLatestDmg(json)
+        assertNotNull(info)
+        assertEquals("c7128a571bec0388b32fa2e358c0e8e35d15746a3132f4217052f203cbf04e14", info.sha256)
+    }
+
+    @Test
     fun parseLatestDmgReturnsNullWithoutDmg() {
         val json = """
             {
