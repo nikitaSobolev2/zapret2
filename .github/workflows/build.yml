@@ -594,9 +594,12 @@ jobs:
           zip -9qr ${{ env.repo_dir }}.zip ${{ env.repo_dir }}
           (
             cd ${{ env.repo_dir }}
+            # Drop non-OpenWrt platforms, build sources, and macOS app payload
+            # (Compose app / utunws / Homebrew cask / tg-ws-proxy do not belong on routers).
             rm -rf binaries/{android*,freebsd*,win*} \
-                   init.d/{openrc,pfsense,runit,s6,systemd,windivert.filter.examples} \
-                   nfq2 ip2net mdig docs Makefile
+                   init.d/{openrc,pfsense,runit,s6,systemd,windivert.filter.examples,macos,custom.d.examples.macos} \
+                   nfq2 ip2net mdig docs Makefile \
+                   app engine third_party Casks
             pigz -11 lua/*.lua
           )
           tar --owner=0 --group=0 -c ${{ env.repo_dir }} | pigz -11 >${{ env.repo_dir }}-openwrt-embedded.tar.gz
