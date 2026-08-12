@@ -32,30 +32,37 @@ data class StrategyProbeRow(
     val strategyId: String,
     val discord: HostProbeMetrics,
     val youtube: HostProbeMetrics,
+    val googlevideo: HostProbeMetrics,
     val control: HostProbeMetrics,
 ) {
     val discordOk: Boolean get() = discord.ok
-    val youtubeOk: Boolean get() = youtube.ok
+    /** Site alone is not enough — UI “no internet” often means CDN/API dead. */
+    val youtubeOk: Boolean get() = youtube.ok && googlevideo.ok
     /** Control must be mostly stable, not a single lucky hit. */
     val controlOk: Boolean
         get() = control.successes * 2 >= control.attempts.coerceAtLeast(1) && control.ok
 
     val usable: Boolean get() = controlOk && (discordOk || youtubeOk)
 
-    /** Mean latency of Discord/YouTube successes (lower is better). */
+    /** Mean latency of Discord/YouTube/CDN successes (lower is better). */
     val avgTargetLatencyMs: Int?
         get() {
-            val samples = listOfNotNull(discord.avgLatencyMs, youtube.avgLatencyMs)
+            val samples = listOfNotNull(
+                discord.avgLatencyMs,
+                youtube.avgLatencyMs,
+                googlevideo.avgLatencyMs,
+            )
             if (samples.isEmpty()) return null
             return samples.average().toInt()
         }
 
-    /** Combined Discord+YouTube success rate, 0–1000. */
+    /** Combined Discord+YouTube+CDN success rate, 0–1000. */
     val targetStabilityPermille: Int
         get() {
-            val attempts = discord.attempts + youtube.attempts
+            val attempts = discord.attempts + youtube.attempts + googlevideo.attempts
             if (attempts <= 0) return 0
-            return ((discord.successes + youtube.successes) * 1000) / attempts
+            val successes = discord.successes + youtube.successes + googlevideo.successes
+            return (successes * 1000) / attempts
         }
 
     /**
@@ -78,6 +85,7 @@ data class StrategyProbeRow(
             strategyId = strategyId,
             discord = HostProbeMetrics.FAILED,
             youtube = HostProbeMetrics.FAILED,
+            googlevideo = HostProbeMetrics.FAILED,
             control = HostProbeMetrics.FAILED,
         )
     }
@@ -148,15 +156,9 @@ class StrategyProbe(
                 }
                 val discord = probeHost("discord.com")
                 val youtube = probeHost("www.youtube.com")
-                // Site OK ≠ playback OK; exercise the video CDN (TCP) too.
-                val googlevideo = probeUrl("https://rr3---sn-5goeenes.googlevideo.com/generate_204")
+                val googlevideo = probeGooglevideo()
                 val control = probeHost("www.apple.com")
-                val row = StrategyProbeRow(
-                    id,
-                    discord,
-                    mergeHostMetrics(youtube, googlevideo),
-                    control,
-                )
+                val row = StrategyProbeRow(id, discord, youtube, googlevideo, control)
                 rows += row
                 appendLog(
                     "$id score=${row.score} discord=${discord.successes}/${discord.attempts}" +
@@ -209,6 +211,29 @@ class StrategyProbe(
 
     private fun probeHost(host: String): HostProbeMetrics = probeUrl("https://$host/")
 
+    /** Hit a resolving googlevideo POP — fixed hostnames go stale across regions. */
+    private fun probeGooglevideo(): HostProbeMetrics {
+        val host = GOOGLEVIDEO_CANDIDATES.firstOrNull(::hostResolves)
+            ?: return HostProbeMetrics.fromLatencies(emptyList(), attempts = SAMPLES)
+        return probeUrl("https://$host/generate_204")
+    }
+
+    private fun hostResolves(host: String): Boolean {
+        val result = Shell.run(
+            "/usr/bin/dig",
+            "+short",
+            "+time=2",
+            "+tries=1",
+            host,
+            timeout = 4.seconds,
+        )
+        if (!result.ok) return false
+        return result.output.lineSequence().any { line ->
+            val t = line.trim()
+            t.isNotEmpty() && (IPV4.matches(t) || t.endsWith('.'))
+        }
+    }
+
     private fun probeUrl(url: String): HostProbeMetrics {
         val latencies = mutableListOf<Int>()
         repeat(SAMPLES) {
@@ -244,14 +269,6 @@ class StrategyProbe(
         return (seconds * 1000.0).toInt().coerceAtLeast(1)
     }
 
-    private fun mergeHostMetrics(a: HostProbeMetrics, b: HostProbeMetrics): HostProbeMetrics {
-        val attempts = a.attempts + b.attempts
-        val successes = a.successes + b.successes
-        val lats = listOfNotNull(a.avgLatencyMs, b.avgLatencyMs)
-        val avg = lats.takeIf { it.isNotEmpty() }?.average()?.toInt()
-        return HostProbeMetrics(successes = successes, attempts = attempts, avgLatencyMs = avg)
-    }
-
     private fun appendLog(line: String) {
         runCatching {
             ZapretPaths.userDataRoot.mkdirs()
@@ -262,19 +279,30 @@ class StrategyProbe(
     companion object {
         private const val SAMPLES = 3
         private const val SAMPLE_GAP_MS = 200L
+        private val IPV4 = Regex("""^\d{1,3}(?:\.\d{1,3}){3}$""")
 
-        /** Mildest-first shortlist (Flowseal “Run Tests” idea). */
+        private val GOOGLEVIDEO_CANDIDATES = listOf(
+            "rr3---sn-5goeenes.googlevideo.com",
+            "rr1---sn-gvnuxaxjvh-o8ge.googlevideo.com",
+            "rr2---sn-gvnuxaxjvh-o8ges.googlevideo.com",
+            "rr4---sn-gvnuxaxjvh-bvwz.googlevideo.com",
+        )
+
+        /**
+         * Prefer fake-tls-auto family first: plain fake+ts (simple-fake / many alts)
+         * often yields YouTube “no internet” on current RU DPI.
+         */
         val SHORTLIST = listOf(
-            "general-simple-fake",
-            "general-simple-fake-alt",
-            "general-simple-fake-alt2",
             "general-fake-tls-auto",
             "general-fake-tls-auto-alt",
             "general-fake-tls-auto-alt2",
             "general-fake-tls-auto-alt3",
+            "general-exp",
+            "general-simple-fake",
+            "general-simple-fake-alt",
+            "general-simple-fake-alt2",
             "general",
             "general-alt",
-            "general-exp",
         )
     }
 }

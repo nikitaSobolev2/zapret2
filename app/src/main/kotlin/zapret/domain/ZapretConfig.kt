@@ -21,7 +21,8 @@ data class ZapretConfig(
     val discordUdp: Boolean = true,
 ) {
     companion object {
-        const val DEFAULT_STRATEGY = "general-simple-fake"
+        /** Fake+ts strategies (simple-fake / many alts) often break YouTube TLS on RU DPI. */
+        const val DEFAULT_STRATEGY = "general-fake-tls-auto"
     }
 }
 
