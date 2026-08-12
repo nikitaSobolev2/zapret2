@@ -1495,6 +1495,7 @@ static uint8_t dpi_desync_tcp_packet_play(bool replay, size_t reasm_offset, uint
 		int i;
 
 		bool bHaveHost = false, bHostIsIp = false;
+		bool bTlsHelloPartial = false;
 		t_l7proto l7proto = UNKNOWN;
 
 		if (replay)
@@ -1544,17 +1545,32 @@ static uint8_t dpi_desync_tcp_packet_play(bool replay, size_t reasm_offset, uint
 			bool bFakeCanRunPartial;
 			DLOG(bReqFull ? "packet contains full TLS ClientHello\n" : "packet contains partial TLS ClientHello\n");
 			l7proto = TLS;
+			bTlsHelloPartial = !bReqFull && !replay;
 
 			if (bReqFull) TLSDebug(rdata_payload, rlen_payload);
 
 			bHaveHost = TLSHelloExtractHost(rdata_payload, rlen_payload, host, sizeof(host), TLS_PARTIALS_ENABLE);
+			/*
+			 * On macOS utun+BPF we can only inject toward the WAN gateway, not ACK back
+			 * into the local TCP stack. Holding ClientHello segments for reassembly
+			 * deadlocks multi-segment ML-KEM/Kyber handshakes (client waits for ACK,
+			 * we wait for the next segment; observed 0 successful reasm feeds).
+			 * Skip reasm hold; after hostname/profile resolve, fake-only + pass original.
+			 */
+#ifdef __APPLE__
+			bFakeCanRunPartial = bTlsHelloPartial;
+			if (bTlsHelloPartial)
+				DLOG("macOS: partial TLS ClientHello; skip reasm hold\n");
+#else
 			bFakeCanRunPartial = (bHaveHost || (!dp->desync_skip_nosni && PROFILE_HOSTLISTS_EMPTY(dp))) &&
 				dp->desync_mode == DESYNC_FAKE && dp->desync_mode2 == DESYNC_NONE;
+#endif
 
 			if (ctrack)
 			{
 				if (!ctrack->l7proto) ctrack->l7proto = l7proto;
 				// do not reasm retransmissions
+#ifndef __APPLE__
 				if (!bReqFull && !bFakeCanRunPartial && ReasmIsEmpty(&ctrack->reasm_orig) && !ctrack->req_seq_abandoned &&
 					!(ctrack->req_seq_finalized && seq_within(ctrack->seq_last, ctrack->req_seq_start, ctrack->req_seq_end)))
 				{
@@ -1565,6 +1581,7 @@ static uint8_t dpi_desync_tcp_packet_play(bool replay, size_t reasm_offset, uint
 						goto send_orig;
 					}
 				}
+#endif
 				if (!ctrack->req_seq_finalized)
 				{
 					if (!ctrack->req_seq_present)
@@ -2068,6 +2085,16 @@ static uint8_t dpi_desync_tcp_packet_play(bool replay, size_t reasm_offset, uint
 		// we do not need reasm buffer anymore
 		reasm_orig_cancel(ctrack);
 		rdata_payload = NULL;
+
+		/*
+		 * Never split an incomplete TLS ClientHello. On macOS this is the only
+		 * safe path for multi-segment (ML-KEM) handshakes: fake then pass.
+		 */
+		if (bTlsHelloPartial)
+		{
+			DLOG("partial TLS ClientHello: skip split stage, pass original after fake\n");
+			goto send_orig;
+		}
 
 		enum dpi_desync_mode desync_mode = dp->desync_mode2 == DESYNC_NONE ? dp->desync_mode : dp->desync_mode2;
 		switch (desync_mode)

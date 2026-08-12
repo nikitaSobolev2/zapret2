@@ -66,19 +66,23 @@ data class StrategyProbeRow(
         }
 
     /**
-     * Higher is better. Reachability dominates, then stability, then lower latency;
-     * mildness is applied by shortlist index on equal scores.
+     * Higher is better. YouTube+CDN dominates (page shell alone still “no internet”),
+     * then Discord, then stability, then lower latency; mildness via shortlist index.
      */
     val score: Long
         get() {
             if (!controlOk) return -1L
-            val reach = (if (discordOk) 2 else 0) + (if (youtubeOk) 2 else 0)
+            val reach = (if (youtubeOk) 3 else 0) + (if (discordOk) 1 else 0)
             val latencyCap = 9_999
             val latencyScore = latencyCap - (avgTargetLatencyMs ?: latencyCap).coerceIn(0, latencyCap)
             return reach * 10_000_000L +
                 targetStabilityPermille * 10_000L +
                 latencyScore
         }
+
+    /** True if this row should replace current best (score, then earlier shortlist index). */
+    fun beats(bestScore: Long, bestIndex: Int, index: Int): Boolean =
+        score > bestScore || (score == bestScore && index < bestIndex)
 
     companion object {
         fun failed(strategyId: String) = StrategyProbeRow(
@@ -167,7 +171,7 @@ class StrategyProbe(
                         "@${googlevideo.avgLatencyMs ?: "-"}ms ctrl=${control.successes}/${control.attempts}" +
                         "@${control.avgLatencyMs ?: "-"}ms",
                 )
-                if (row.usable && (row.score > bestScore || (row.score == bestScore && index < bestIndex))) {
+                if (row.usable && row.beats(bestScore, bestIndex, index)) {
                     bestScore = row.score
                     bestIndex = index
                     winner = id
@@ -289,18 +293,19 @@ class StrategyProbe(
         )
 
         /**
-         * Prefer fake-tls-auto family first: plain fake+ts (simple-fake / many alts)
-         * often yields YouTube “no internet” on current RU DPI.
+         * YouTube needs CDN (googlevideo) too — page shell alone still shows “no internet”.
+         * Skip simple-fake*: fake+ts often kills YT TLS while Discord still works.
          */
         val SHORTLIST = listOf(
             "general-fake-tls-auto",
             "general-fake-tls-auto-alt",
             "general-fake-tls-auto-alt2",
             "general-fake-tls-auto-alt3",
+            "general-pq-multisplit",
+            "general-pq-multi",
+            "general-pq-disorder-midsld",
+            "general-pq-split-seqovl",
             "general-exp",
-            "general-simple-fake",
-            "general-simple-fake-alt",
-            "general-simple-fake-alt2",
             "general",
             "general-alt",
         )

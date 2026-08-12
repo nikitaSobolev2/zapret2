@@ -96,6 +96,15 @@ val buildTgWsProxySidecar = tasks.register<Exec>("buildTgWsProxySidecar") {
 
 tasks.matching { it.name == "prepareAppResources" }.configureEach {
     dependsOn(buildUtunws, buildTgWsProxySidecar)
+    // Compose/DMG staging can drop +x on nested Mach-O; readiness checks canExecute().
+    doLast {
+        listOf(
+            engineStaged.get().asFile.resolve("bin/utunws"),
+            tgWsProxyStaged.get().asFile.resolve("tg-ws-proxy"),
+        ).forEach { binary ->
+            if (binary.isFile) binary.setExecutable(true, false)
+        }
+    }
 }
 
 compose.desktop {

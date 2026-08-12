@@ -99,6 +99,29 @@ class StrategyProbeTest {
         assertEquals("general-fake-tls-auto", StrategyProbe.SHORTLIST.first())
         assertTrue(StrategyProbe.SHORTLIST.contains("general-fake-tls-auto-alt2"))
         assertTrue(StrategyProbe.SHORTLIST.contains("general-exp"))
+        assertTrue(StrategyProbe.SHORTLIST.contains("general-pq-multisplit"))
+        assertFalse(StrategyProbe.SHORTLIST.contains("general-simple-fake"))
+        assertFalse(StrategyProbe.SHORTLIST.contains("general-simple-fake-alt"))
+    }
+
+    @Test
+    fun scorePrefersYoutubeOverDiscordOnly() {
+        val youtubeAndDiscord = row(
+            "yt",
+            discord = HostProbeMetrics(3, 3, 200),
+            youtube = HostProbeMetrics(3, 3, 500),
+            googlevideo = HostProbeMetrics(3, 3, 160),
+            control = HostProbeMetrics(3, 3, 350),
+        )
+        val discordOnly = row(
+            "discord",
+            discord = HostProbeMetrics(3, 3, 50),
+            youtube = HostProbeMetrics(0, 3, null),
+            googlevideo = HostProbeMetrics(0, 3, null),
+            control = HostProbeMetrics(3, 3, 350),
+        )
+        assertTrue(youtubeAndDiscord.score > discordOnly.score)
+        assertTrue(youtubeAndDiscord.beats(discordOnly.score, 0, 1))
     }
 
     @Test
@@ -112,7 +135,7 @@ class StrategyProbeTest {
         var bestScore = Long.MIN_VALUE
         var bestIndex = Int.MAX_VALUE
         rows.forEachIndexed { index, probeRow ->
-            if (probeRow.usable && (probeRow.score > bestScore || (probeRow.score == bestScore && index < bestIndex))) {
+            if (probeRow.usable && probeRow.beats(bestScore, bestIndex, index)) {
                 bestScore = probeRow.score
                 bestIndex = index
                 winner = probeRow.strategyId
