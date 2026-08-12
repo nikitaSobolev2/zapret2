@@ -94,16 +94,53 @@ val buildTgWsProxySidecar = tasks.register<Exec>("buildTgWsProxySidecar") {
     }
 }
 
+fun restoreSidecarExecuteBits(root: File) {
+    listOf(
+        root.resolve("engine/bin/utunws"),
+        root.resolve("tg-ws-proxy/tg-ws-proxy"),
+    ).forEach { binary ->
+        if (binary.isFile) binary.setExecutable(true, false)
+    }
+    root.resolve("engine").listFiles()
+        ?.filter { it.isFile && it.name.endsWith(".sh") }
+        ?.forEach { it.setExecutable(true, false) }
+}
+
 tasks.matching { it.name == "prepareAppResources" }.configureEach {
     dependsOn(buildUtunws, buildTgWsProxySidecar)
     // Compose/DMG staging can drop +x on nested Mach-O; readiness checks canExecute().
     doLast {
-        listOf(
-            engineStaged.get().asFile.resolve("bin/utunws"),
-            tgWsProxyStaged.get().asFile.resolve("tg-ws-proxy"),
-        ).forEach { binary ->
-            if (binary.isFile) binary.setExecutable(true, false)
-        }
+        restoreSidecarExecuteBits(layout.buildDirectory.get().asFile.resolve("appResources/common"))
+    }
+}
+
+// Final .app / DMG copy also strips +x — fix after Compose packages the bundle.
+tasks.matching {
+    it.name in setOf(
+        "createDistributable",
+        "createReleaseDistributable",
+        "packageDmg",
+        "packageReleaseDmg",
+        "runDistributable",
+        "runReleaseDistributable",
+    )
+}.configureEach {
+    doLast {
+        val distRoots = listOf(
+            layout.buildDirectory.get().asFile.resolve("compose/binaries/main/app"),
+            layout.buildDirectory.get().asFile.resolve("compose/binaries/main-release/app"),
+            layout.buildDirectory.get().asFile.resolve("compose/binaries/main/dmg"),
+            layout.buildDirectory.get().asFile.resolve("compose/binaries/main-release/dmg"),
+        )
+        distRoots
+            .filter { it.isDirectory }
+            .flatMap { root ->
+                root.walkTopDown()
+                    .maxDepth(6)
+                    .filter { it.isDirectory && it.name == "resources" && it.parentFile?.name == "app" }
+                    .toList()
+            }
+            .forEach(::restoreSidecarExecuteBits)
     }
 }
 

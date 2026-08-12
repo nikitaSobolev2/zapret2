@@ -44,8 +44,18 @@ object ZapretPaths {
         repositoryEnginePayload(),
     ).filterNotNull().firstOrNull(::isEnginePayload)
 
-    fun hasPrebuiltUtunws(payload: File): Boolean =
-        File(payload, "bin/utunws").canExecute()
+    /**
+     * True when bundled `bin/utunws` exists and is runnable.
+     * Compose/DMG often copies Mach-O without +x; restore the bit in-place when possible.
+     */
+    fun hasPrebuiltUtunws(payload: File): Boolean {
+        val binary = File(payload, "bin/utunws")
+        if (!binary.isFile) return false
+        if (binary.canExecute()) return true
+        // Packaging strips mode bits; app resources are usually user-writable.
+        binary.setExecutable(true, false)
+        return binary.canExecute()
+    }
 
     fun isEnginePayload(dir: File): Boolean =
         File(dir, "run.sh").isFile &&
