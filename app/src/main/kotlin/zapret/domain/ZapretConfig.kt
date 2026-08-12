@@ -19,6 +19,11 @@ data class ZapretConfig(
     val ipsetMode: IpsetMode = IpsetMode.NONE,
     /** Divert Discord/STUN UDP port bands via PF (battery cost when on). */
     val discordUdp: Boolean = true,
+    /**
+     * Drop UDP/443 (HTTP/3) so browsers fall back to TCP desync.
+     * Off = divert QUIC through utunws like Flowseal Windows packs.
+     */
+    val blockQuic: Boolean = true,
 ) {
     companion object {
         /** Fake+ts strategies (simple-fake / many alts) often break YouTube TLS on RU DPI. */

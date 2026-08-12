@@ -90,10 +90,11 @@ fi
 if [ -L "$DATA_ROOT/selected-strategy" ] || [ ! -f "$DATA_ROOT/selected-strategy" ]; then exit 1; fi
 if [ -L "$DATA_ROOT/ipset-mode" ] || [ ! -f "$DATA_ROOT/ipset-mode" ]; then exit 1; fi
 if [ -L "$DATA_ROOT/discord-udp" ]; then exit 1; fi
+if [ -L "$DATA_ROOT/block-quic" ]; then exit 1; fi
 
 STRATEGY=$(/usr/bin/tr -d '[:space:]' <"$DATA_ROOT/selected-strategy" 2>/dev/null || true)
 if ! printf '%s\n' "$STRATEGY" | /usr/bin/grep -Eq '^general(-[a-z0-9]+)*$' || [ ! -f "$BASE/strategies/$STRATEGY.conf.in" ]; then
-    STRATEGY=general-simple-fake
+    STRATEGY=general-fake-tls-auto
 fi
 
 if [ -L "$DATA_ROOT" ] || [ -L "$DATA_ROOT/lists" ] || [ ! -d "$DATA_ROOT/lists" ]; then exit 1; fi
@@ -134,10 +135,11 @@ DISCORD_UDP=1
 if [ -f "$DATA_ROOT/discord-udp" ]; then
     DISCORD_UDP=$(/usr/bin/tr -d '[:space:]' <"$DATA_ROOT/discord-udp" 2>/dev/null || echo 1)
 fi
-case "$DISCORD_UDP" in
-    0) UDP_PORTS='443' ;;
-    *) UDP_PORTS='443,19294:19344,50000:50100' ;;
-esac
+# Browsers prefer HTTP/3; broken QUIC looks like “no internet” while curl/TCP works.
+BLOCK_QUIC=1
+if [ -f "$DATA_ROOT/block-quic" ]; then
+    BLOCK_QUIC=$(/usr/bin/tr -d '[:space:]' <"$DATA_ROOT/block-quic" 2>/dev/null || echo 1)
+fi
 
 /usr/bin/sed -e "s|@BASE@|$BASE|g" -e "s|@LISTS@|$RUNTIME_LISTS|g" -e "s|@IPSET@|$IPSET|g" \
     "$BASE/strategies/$STRATEGY.conf.in" >"$CONF_FILE"
@@ -172,10 +174,29 @@ if /sbin/pfctl -s info 2>/dev/null | /usr/bin/grep -q '^Status: Disabled'; then
 fi
 
 # Bind divert to physical WAN only so split-tunnel corp VPN (ppp0/utun) is untouched.
-printf '%s\n' \
-  "pass out quick on $PHYSICAL_IFACE route-to (utun50 10.77.0.2) inet proto tcp from any to any port {80,443,2053,2083,2087,2096,8443} user { >root } no state" \
-  "pass out quick on $PHYSICAL_IFACE route-to (utun50 10.77.0.2) inet proto udp from any to any port {$UDP_PORTS} user { >root } no state" \
-  | /sbin/pfctl -a "$ANCHOR" -f -
+TCP_RULE="pass out quick on $PHYSICAL_IFACE route-to (utun50 10.77.0.2) inet proto tcp from any to any port {80,443,2053,2083,2087,2096,8443} user { >root } no state"
+QUIC_BLOCK="block drop out quick on $PHYSICAL_IFACE inet proto udp from any to any port 443 user { >root } no state"
+QUIC_DIVERT="pass out quick on $PHYSICAL_IFACE route-to (utun50 10.77.0.2) inet proto udp from any to any port 443 user { >root } no state"
+DISCORD_DIVERT="pass out quick on $PHYSICAL_IFACE route-to (utun50 10.77.0.2) inet proto udp from any to any port {19294:19344,50000:50100} user { >root } no state"
+ALL_UDP_DIVERT="pass out quick on $PHYSICAL_IFACE route-to (utun50 10.77.0.2) inet proto udp from any to any port {443,19294:19344,50000:50100} user { >root } no state"
+{
+    /bin/echo "$TCP_RULE"
+    case "$BLOCK_QUIC" in
+        0)
+            if [ "$DISCORD_UDP" = 0 ]; then
+                /bin/echo "$QUIC_DIVERT"
+            else
+                /bin/echo "$ALL_UDP_DIVERT"
+            fi
+            ;;
+        *)
+            /bin/echo "$QUIC_BLOCK"
+            if [ "$DISCORD_UDP" != 0 ]; then
+                /bin/echo "$DISCORD_DIVERT"
+            fi
+            ;;
+    esac
+} | /sbin/pfctl -a "$ANCHOR" -f -
 
 while kill -0 "$ENGINE_PID" 2>/dev/null; do
     sleep 2

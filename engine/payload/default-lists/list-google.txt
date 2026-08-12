@@ -1,8 +1,12 @@
 yt3.ggpht.com
 yt4.ggpht.com
+ggpht.com
 yt3.googleusercontent.com
+googleusercontent.com
 googlevideo.com
 jnn-pa.googleapis.com
+googleapis.com
+gstatic.com
 stable.dl2.discordapp.net
 wide-youtube.l.google.com
 youtube-nocookie.com

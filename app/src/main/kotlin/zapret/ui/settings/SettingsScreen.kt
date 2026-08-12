@@ -122,6 +122,12 @@ fun SettingsScreen(
                     onChange = { draft = draft.copy(discordUdp = it) },
                     description = "Голос Discord через PF (чуть выше нагрузка)",
                 )
+                SwitchRow(
+                    label = "Блокировать QUIC (HTTP/3)",
+                    checked = draft.blockQuic,
+                    onChange = { draft = draft.copy(blockQuic = it) },
+                    description = "YouTube в браузере: UDP/443 → TCP (рекомендуется)",
+                )
             }
 
             Section(title = "Списки", description = "~/Library/Application Support/Zapret/lists") {
