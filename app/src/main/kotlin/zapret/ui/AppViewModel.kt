@@ -3,6 +3,7 @@ package zapret.ui
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,6 +26,8 @@ import zapret.domain.ServiceOrchestrator
 import zapret.domain.StatusPoller
 import zapret.domain.StrategyCatalog
 import zapret.domain.StrategyProbe
+import zapret.domain.StrategyProbeMessages
+import zapret.domain.StrategyProbeReport
 import zapret.domain.TgWsProxyConfig
 import zapret.domain.TgWsProxyService
 import zapret.domain.TgWsProxyStore
@@ -62,6 +65,7 @@ class AppViewModel(private val scope: CoroutineScope) {
 
     private var updateJob: Job? = null
     private var probeJob: Job? = null
+    private var probeGeneration = 0
 
     var state by mutableStateOf(UiState(appVersion = AppVersion.current()))
         private set
@@ -196,9 +200,9 @@ class AppViewModel(private val scope: CoroutineScope) {
             }
             return
         }
-        val updated = current.copy(enabled = enabled)
-        state = state.copy(tgConfig = updated, tgRunning = enabled && state.tgRunning)
-        scope.launch { finishSetTgEnabled(current, updated, enabled) }
+        operation(if (enabled) "Запуск TG proxy" else "Остановка TG proxy") {
+            orchestrator.applyTg(current.copy(enabled = enabled))
+        }
     }
 
     fun probeStrategies() {
@@ -209,31 +213,26 @@ class AppViewModel(private val scope: CoroutineScope) {
         }
         probeJob?.cancel()
         strategyProbe.cancel()
+        val generation = ++probeGeneration
         probeJob = scope.launch {
             state = state.copy(probePhase = "Подбор стратегии…", probeReport = null, notice = null)
-            val outcome = runCatching {
-                withContext(Dispatchers.IO) {
-                    strategyProbe.run { phase ->
-                        scope.launch { state = state.copy(probePhase = phase) }
-                    }
-                }
+            val outcome = try {
+                Result.success(
+                    withContext(Dispatchers.IO) {
+                        strategyProbe.run { phase ->
+                            scope.launch {
+                                if (generation != probeGeneration) return@launch
+                                state = state.copy(probePhase = phase)
+                            }
+                        }
+                    },
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                Result.failure(error)
             }
-            reload()
-            state = state.copy(
-                probePhase = null,
-                probeReport = outcome.getOrNull(),
-                notice = when {
-                    outcome.isFailure -> Notice(
-                        outcome.exceptionOrNull()?.message ?: "Подбор не удался",
-                        isError = true,
-                    )
-                    outcome.getOrNull()?.winnerId != null -> Notice(
-                        "Подобрана стратегия ${outcome.getOrNull()!!.winnerId}",
-                        isError = false,
-                    )
-                    else -> Notice("Рабочая стратегия не найдена — восстановлена прежняя", isError = true)
-                },
-            )
+            finishProbe(generation, outcome)
         }
     }
 
@@ -452,36 +451,25 @@ class AppViewModel(private val scope: CoroutineScope) {
         )
     }
 
-    private fun canControlServices(): Boolean =
-        state.busy == null && state.probePhase == null
-
-    private suspend fun finishSetTgEnabled(
-        previous: TgWsProxyConfig,
-        updated: TgWsProxyConfig,
-        enabled: Boolean,
-    ) {
-        val result = withContext(Dispatchers.IO) {
-            orchestrator.applyTg(updated)
-        }
-        val status = withContext(Dispatchers.IO) {
-            runCatching { CombinedStatus(service.status(), tgProxy.isRunning()) }
-                .getOrDefault(CombinedStatus())
-        }
-        if (!result.ok) {
-            state = state.withStatus(status).copy(
-                tgConfig = previous,
-                notice = Notice(
-                    result.lastLine().ifBlank { result.output }.ifBlank { "TG proxy не запущен" },
-                    isError = true,
-                ),
-            )
-            return
-        }
-        state = state.withStatus(status).copy(
-            tgConfig = updated,
-            notice = if (!enabled) null else state.notice,
+    private fun finishProbe(generation: Int, outcome: Result<StrategyProbeReport>) {
+        if (generation != probeGeneration) return
+        probeGeneration++
+        reload()
+        val report = outcome.getOrNull() ?: strategyProbe.lastReportOrNull()
+        val winnerId = report?.winnerId ?: strategyProbe.lastWinnerId
+        val hasResults = strategyProbe.lastResults.isNotEmpty()
+        state = state.copy(
+            probePhase = null,
+            probeReport = report,
+            notice = Notice(
+                text = StrategyProbeMessages.banner(winnerId, outcome.exceptionOrNull(), hasResults),
+                isError = winnerId == null,
+            ),
         )
     }
+
+    private fun canControlServices(): Boolean =
+        state.busy == null && state.probePhase == null
 
     private fun operation(label: String, block: () -> CommandResult) {
         if (state.busy != null) return

@@ -56,6 +56,44 @@ class ServiceOrchestratorTest {
     }
 
     @Test
+    fun applyTgDoesNotPersistEnabledWhenRestartFails() {
+        val store = storeInTemp()
+        val previous = TgWsProxyConfig(
+            enabled = false,
+            host = "127.0.0.1",
+            secret = "0123456789abcdef0123456789abcdef",
+        )
+        store.write(previous)
+        val tg = RecordingTg(restartResult = CommandResult(139, "tg-ws-proxy exited early (code=139)"))
+        val orchestrator = ServiceOrchestrator(FakeZapret(running = false), tg, store)
+
+        val attempted = previous.copy(enabled = true, host = "10.0.0.1")
+        val result = orchestrator.applyTg(attempted)
+        assertFalse(result.ok)
+        assertEquals(1, tg.restartCount)
+        val persisted = store.read()
+        assertFalse(persisted.enabled)
+        assertEquals("10.0.0.1", persisted.host)
+    }
+
+    @Test
+    fun applyTgPersistsDisableEvenWhenStopFails() {
+        val store = storeInTemp()
+        val enabled = TgWsProxyConfig(
+            enabled = true,
+            secret = "0123456789abcdef0123456789abcdef",
+        )
+        store.write(enabled)
+        val tg = RecordingTg(stopResult = CommandResult(1, "kill failed"))
+        val orchestrator = ServiceOrchestrator(FakeZapret(running = true), tg, store)
+
+        val result = orchestrator.applyTg(enabled.copy(enabled = false))
+        assertFalse(result.ok)
+        assertEquals(1, tg.stopCount)
+        assertFalse(store.read().enabled)
+    }
+
+    @Test
     fun startAllStartsTgWhenEnabled() {
         val store = storeInTemp()
         store.write(TgWsProxyConfig(enabled = true, secret = "0123456789abcdef0123456789abcdef"))
@@ -133,6 +171,8 @@ private class FakeZapret(private val running: Boolean) : ZapretControl {
 
 private class RecordingTg(
     private val startResult: CommandResult = CommandResult(0, "start"),
+    private val stopResult: CommandResult = CommandResult(0, "stop"),
+    private val restartResult: CommandResult = CommandResult(0, "restart"),
 ) : TgWsProxyControl {
     var startCount = 0
     var stopCount = 0
@@ -143,11 +183,11 @@ private class RecordingTg(
     }
     override fun stop(): CommandResult {
         stopCount++
-        return CommandResult(0, "stop")
+        return stopResult
     }
     override fun restart(config: TgWsProxyConfig): CommandResult {
         restartCount++
-        return CommandResult(0, "restart")
+        return restartResult
     }
     override fun isRunning(): Boolean = false
 }

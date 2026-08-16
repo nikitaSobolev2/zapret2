@@ -125,6 +125,44 @@ class StrategyProbeTest {
     }
 
     @Test
+    fun bannerHidesJvmClassNameAfterSuccessfulWinner() {
+        val error = NoClassDefFoundError("zapret/domain/StrategyProbeReport")
+        assertEquals(
+            "Подобрана стратегия general-fake-tls-auto",
+            StrategyProbeMessages.banner("general-fake-tls-auto", error, hasResults = true),
+        )
+        assertFalse(StrategyProbeMessages.banner("general-fake-tls-auto", error, true).contains("/"))
+    }
+
+    @Test
+    fun bannerUsesFriendlyTextForJvmInternalName() {
+        val error = NoClassDefFoundError("zapret/domain/StrategyProbeReport")
+        assertTrue(StrategyProbeMessages.isJvmInternalName("zapret/domain/StrategyProbeReport"))
+        assertEquals(StrategyProbeMessages.FAILED, StrategyProbeMessages.forError(error))
+        assertEquals(
+            StrategyProbeMessages.FAILED,
+            StrategyProbeMessages.banner(null, error, hasResults = false),
+        )
+    }
+
+    @Test
+    fun bannerKeepsDomainErrorText() {
+        assertEquals(
+            "Движок не установлен",
+            StrategyProbeMessages.forError(IllegalStateException("Движок не установлен")),
+        )
+    }
+
+    @Test
+    fun bannerPrefersNoneFoundWhenRowsExistWithoutWinner() {
+        val error = NoClassDefFoundError("zapret/domain/StrategyProbeReport")
+        assertEquals(
+            StrategyProbeMessages.NONE_FOUND,
+            StrategyProbeMessages.banner(null, error, hasResults = true),
+        )
+    }
+
+    @Test
     fun milderWinsOnEqualScore() {
         val metrics = HostProbeMetrics(2, 3, 120)
         val rows = listOf(

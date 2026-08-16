@@ -112,8 +112,24 @@ class StrategyProbe(
 ) {
     private val cancelRequested = AtomicBoolean(false)
 
+    @Volatile var lastWinnerId: String? = null
+        private set
+
+    @Volatile var lastRestored: Boolean = false
+        private set
+
+    @Volatile var lastResults: List<StrategyProbeRow> = emptyList()
+        private set
+
     fun cancel() {
         cancelRequested.set(true)
+    }
+
+    fun lastReportOrNull(): StrategyProbeReport? {
+        val results = lastResults
+        val winnerId = lastWinnerId
+        if (results.isEmpty() && winnerId == null) return null
+        return runCatching { StrategyProbeReport(results, winnerId, lastRestored) }.getOrNull()
     }
 
     fun run(
@@ -121,6 +137,7 @@ class StrategyProbe(
         onPhase: (String) -> Unit = {},
     ): StrategyProbeReport {
         cancelRequested.set(false)
+        rememberCompletion(emptyList(), winnerId = null, restored = false)
         if (!ZapretPaths.isInstalled) {
             error("Движок не установлен")
         }
@@ -138,6 +155,7 @@ class StrategyProbe(
         var bestScore = Long.MIN_VALUE
         var bestIndex = Int.MAX_VALUE
         var cancelled = false
+        var applied = false
 
         try {
             available.forEachIndexed { index, id ->
@@ -191,16 +209,30 @@ class StrategyProbe(
                 restored = true
                 winner = null
             }
+            applied = true
+            rememberCompletion(rows, winner, restored)
             appendLog("winner=${winner ?: "none"} restored=$restored")
-            return StrategyProbeReport(results = rows, winnerId = winner, restoredPrevious = restored)
-        } catch (e: Exception) {
-            runCatching {
-                lists.writeConfig(previous)
-                service.restart()
+            return StrategyProbeReport(results = lastResults, winnerId = winner, restoredPrevious = restored)
+        } catch (e: Throwable) {
+            if (!applied) {
+                runCatching {
+                    lists.writeConfig(previous)
+                    service.restart()
+                }
             }
-            appendLog("probe failed: ${e.message}")
+            appendLog("probe failed: ${e::class.simpleName}: ${e.message}")
             throw e
         }
+    }
+
+    private fun rememberCompletion(
+        rows: List<StrategyProbeRow>,
+        winnerId: String?,
+        restored: Boolean,
+    ) {
+        lastResults = rows.toList()
+        lastWinnerId = winnerId
+        lastRestored = restored
     }
 
     private fun waitForUtun(): Boolean {
@@ -395,4 +427,25 @@ class StrategyProbe(
             "general-alt",
         )
     }
+}
+
+object StrategyProbeMessages {
+    const val FAILED = "Подбор не удался"
+    const val NONE_FOUND = "Рабочая стратегия не найдена — восстановлена прежняя"
+
+    fun banner(winnerId: String?, error: Throwable?, hasResults: Boolean): String = when {
+        !winnerId.isNullOrBlank() -> "Подобрана стратегия $winnerId"
+        hasResults || error == null -> NONE_FOUND
+        else -> forError(error)
+    }
+
+    fun forError(error: Throwable): String {
+        val message = error.message?.trim().orEmpty()
+        if (message.isEmpty() || isJvmInternalName(message)) return FAILED
+        return message
+    }
+
+    fun isJvmInternalName(message: String): Boolean = JVM_INTERNAL_NAME.matches(message)
+
+    private val JVM_INTERNAL_NAME = Regex("""^[a-zA-Z_][\w$]*(?:/[a-zA-Z_][\w$]*)+$""")
 }

@@ -319,7 +319,7 @@ private fun ProbeSummary(report: StrategyProbeReport) {
             style = MaterialTheme.typography.bodyMedium,
             color = if (report.winnerId != null) Palette.accent else Palette.danger,
         )
-        report.results.takeLast(6).forEach { row ->
+        report.results.forEach { row ->
             val stab = row.targetStabilityPermille / 10
             val ping = row.avgTargetLatencyMs?.let { "${it}ms" } ?: "—"
             Text(

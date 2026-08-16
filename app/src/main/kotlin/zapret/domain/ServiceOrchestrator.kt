@@ -50,8 +50,18 @@ class ServiceOrchestrator(
 
     fun applyTg(config: TgWsProxyConfig): CommandResult {
         TgWsProxyValidation.requireValid(config)
+        return if (config.enabled) startAndPersist(config) else stopAndPersist(config)
+    }
+
+    private fun startAndPersist(config: TgWsProxyConfig): CommandResult {
+        val result = tgProxy.restart(config)
+        tgStore.write(if (result.ok) config else config.copy(enabled = false))
+        return result
+    }
+
+    private fun stopAndPersist(config: TgWsProxyConfig): CommandResult {
         tgStore.write(config)
-        return if (config.enabled) tgProxy.restart(config) else tgProxy.stop()
+        return tgProxy.stop()
     }
 
     fun tgRunning(): Boolean = tgProxy.isRunning()
