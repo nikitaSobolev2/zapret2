@@ -28,5 +28,5 @@ object Dimens {
     val windowMaxHeight = 900
 
     val panelWidth = 320.dp
-    val panelHeight = 260.dp
+    val panelHeight = 300.dp
 }

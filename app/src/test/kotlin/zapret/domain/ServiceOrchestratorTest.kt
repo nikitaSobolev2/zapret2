@@ -9,10 +9,11 @@ import kotlin.test.assertTrue
 class ServiceOrchestratorTest {
 
     @Test
-    fun applyTgPersistsAndSkipsStartWhenZapretStopped() {
+    fun applyTgStartsProxyWithoutStartingZapret() {
         val store = storeInTemp()
         val tg = RecordingTg()
-        val orchestrator = ServiceOrchestrator(FakeZapret(running = false), tg, store)
+        val zapret = FakeZapret(running = false)
+        val orchestrator = ServiceOrchestrator(zapret, tg, store)
 
         val config = TgWsProxyConfig(
             enabled = true,
@@ -20,8 +21,9 @@ class ServiceOrchestratorTest {
         )
         assertTrue(orchestrator.applyTg(config).ok)
         assertEquals(config, store.read())
+        assertEquals(0, zapret.startCount)
+        assertEquals(1, tg.restartCount)
         assertEquals(0, tg.startCount)
-        assertEquals(0, tg.restartCount)
     }
 
     @Test

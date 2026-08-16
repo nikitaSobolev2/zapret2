@@ -162,6 +162,14 @@ class AppViewModel(private val scope: CoroutineScope) {
         tgProxy.restart(config)
     }
 
+    fun toggleTgProxy() {
+        val current = runCatching { tgStore.read() }.getOrDefault(state.tgConfig)
+        val enable = !state.tgRunning
+        operation(if (enable) "Запуск TG proxy" else "Остановка TG proxy") {
+            orchestrator.applyTg(current.copy(enabled = enable))
+        }
+    }
+
     fun uninstall(what: UninstallScope) = operation("Удаление") {
         uninstaller.uninstall(what).also { if (it.ok) exitProcess(0) }
     }
@@ -184,18 +192,22 @@ class AppViewModel(private val scope: CoroutineScope) {
             val result = withContext(Dispatchers.IO) {
                 orchestrator.applyTg(current.copy(enabled = enabled))
             }
-            if (result.ok && !enabled) {
-                state = state.copy(notice = null)
-                return@launch
+            val status = withContext(Dispatchers.IO) {
+                runCatching { CombinedStatus(service.status(), tgProxy.isRunning()) }
+                    .getOrDefault(CombinedStatus())
             }
-            if (!result.ok) {
-                state = state.copy(
-                    notice = Notice(
+            val updated = current.copy(enabled = enabled)
+            state = state.withStatus(status).copy(
+                tgConfig = updated,
+                notice = when {
+                    !result.ok -> Notice(
                         result.lastLine().ifBlank { result.output }.ifBlank { "TG proxy не запущен" },
                         isError = true,
-                    ),
-                )
-            }
+                    )
+                    !enabled -> null
+                    else -> state.notice
+                },
+            )
         }
     }
 

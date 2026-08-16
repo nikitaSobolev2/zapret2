@@ -67,6 +67,9 @@ data class UiState(
         val at = uptimeAt ?: return measured
         return measured + at.elapsedNow()
     }
+
+    fun tgProxyToggleLabel(): String =
+        if (tgRunning) "Выключить TG proxy" else "Включить TG proxy"
 }
 
 fun Duration?.asTimer(): String {

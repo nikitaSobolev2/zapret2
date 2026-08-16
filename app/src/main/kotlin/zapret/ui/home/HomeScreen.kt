@@ -26,6 +26,7 @@ import kotlinx.coroutines.delay
 import zapret.ui.Screen
 import zapret.ui.UiState
 import zapret.ui.asTimer
+import zapret.ui.components.GhostButton
 import zapret.ui.components.InfoCard
 import zapret.ui.theme.BrandStyle
 import zapret.ui.theme.Dimens
@@ -36,6 +37,7 @@ import zapret.ui.theme.TimerStyle
 fun HomeScreen(
     state: UiState,
     onToggle: () -> Unit,
+    onToggleTg: () -> Unit,
     onOpen: (Screen) -> Unit,
     onInstallCompiler: () -> Unit = {},
     mod: Modifier = Modifier,
@@ -51,6 +53,14 @@ fun HomeScreen(
         Spacer(Modifier.height(Dimens.md))
 
         PowerButton(running = state.running, busy = state.busy != null, onClick = onToggle)
+
+        Spacer(Modifier.height(Dimens.md))
+        GhostButton(
+            text = state.tgProxyToggleLabel(),
+            enabled = state.busy == null,
+            onClick = onToggleTg,
+            modifier = Modifier.fillMaxWidth(),
+        )
 
         Spacer(Modifier.height(Dimens.lg))
         Text(state.headline(), style = MaterialTheme.typography.headlineSmall, color = Palette.text)
@@ -132,8 +142,7 @@ private fun UiState.subline(): String = when {
 }
 
 private fun UiState.tgStatusLine(): String = when {
-    !tgConfig.enabled -> "выключен в настройках"
     tgRunning -> "работает · ${tgConfig.host}:${tgConfig.port}"
-    running -> "ожидает / не запущен"
-    else -> "стартует вместе с Zapret"
+    tgConfig.enabled -> "остановлен"
+    else -> "выключен"
 }

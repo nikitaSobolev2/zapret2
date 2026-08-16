@@ -51,12 +51,7 @@ class ServiceOrchestrator(
     fun applyTg(config: TgWsProxyConfig): CommandResult {
         TgWsProxyValidation.requireValid(config)
         tgStore.write(config)
-        val zapretRunning = zapret.status().running
-        return when {
-            !config.enabled -> tgProxy.stop()
-            zapretRunning -> tgProxy.restart(config)
-            else -> CommandResult(0, "tg-ws-proxy config saved")
-        }
+        return if (config.enabled) tgProxy.restart(config) else tgProxy.stop()
     }
 
     fun tgRunning(): Boolean = tgProxy.isRunning()

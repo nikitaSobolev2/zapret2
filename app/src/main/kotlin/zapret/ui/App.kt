@@ -32,6 +32,7 @@ fun App(model: AppViewModel) = ZapretTheme {
                         HomeScreen(
                             state = state,
                             onToggle = model::toggle,
+                            onToggleTg = model::toggleTgProxy,
                             onOpen = model::show,
                             onInstallCompiler = model::installCompilerTools,
                         )
