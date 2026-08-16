@@ -8,7 +8,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -20,8 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -310,34 +307,74 @@ fun DropdownField(
     var expanded by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Dimens.xs)) {
         Text(label, style = MaterialTheme.typography.labelLarge, color = Palette.textMuted)
-        Box {
-            Row(
+        DropdownAnchor(
+            value = value,
+            expanded = expanded,
+            enabled = enabled,
+            onToggle = { expanded = !expanded },
+        )
+        if (expanded) {
+            DropdownOptions(
+                options = options,
+                selectedTitle = value,
+                enabled = enabled,
+                onSelect = { id ->
+                    onSelect(id)
+                    expanded = false
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun DropdownAnchor(
+    value: String,
+    expanded: Boolean,
+    enabled: Boolean,
+    onToggle: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Dimens.radiusField))
+            .background(Palette.fieldIdle)
+            .border(1.dp, Palette.outline, RoundedCornerShape(Dimens.radiusField))
+            .clickable(enabled = enabled, onClick = onToggle)
+            .padding(horizontal = Dimens.md, vertical = Dimens.md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(value, style = MaterialTheme.typography.bodyLarge, color = Palette.text, modifier = Modifier.weight(1f))
+        Text(if (expanded) "▴" else "▾", color = Palette.textMuted)
+    }
+}
+
+@Composable
+private fun DropdownOptions(
+    options: List<Pair<String, String>>,
+    selectedTitle: String,
+    enabled: Boolean,
+    onSelect: (String) -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Dimens.radiusField))
+            .background(Palette.surfaceRaised)
+            .border(1.dp, Palette.outline, RoundedCornerShape(Dimens.radiusField)),
+    ) {
+        options.forEach { (id, title) ->
+            val selected = title == selectedTitle
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (selected) Palette.accent else Palette.text,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(Dimens.radiusField))
-                    .background(Palette.fieldIdle)
-                    .border(1.dp, Palette.outline, RoundedCornerShape(Dimens.radiusField))
-                    .clickable(enabled = enabled) { expanded = true }
+                    .background(if (selected) Palette.accent.copy(alpha = 0.10f) else Color.Transparent)
+                    .clickable(enabled = enabled) { onSelect(id) }
                     .padding(horizontal = Dimens.md, vertical = Dimens.md),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(value, style = MaterialTheme.typography.bodyLarge, color = Palette.text, modifier = Modifier.weight(1f))
-                Text("▾", color = Palette.textMuted)
-            }
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-            ) {
-                options.forEach { (id, title) ->
-                    DropdownMenuItem(
-                        text = { Text(title, color = Palette.text) },
-                        onClick = {
-                            onSelect(id)
-                            expanded = false
-                        },
-                    )
-                }
-            }
+            )
         }
     }
 }
