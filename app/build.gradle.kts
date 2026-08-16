@@ -124,13 +124,11 @@ tasks.matching { it.name == "prepareAppResources" }.configureEach {
     }
 }
 
-// Final .app / DMG copy also strips +x — fix after Compose packages the bundle.
+// Final .app copy also strips +x — restore after Compose writes the bundle.
 tasks.matching {
     it.name in setOf(
         "createDistributable",
         "createReleaseDistributable",
-        "packageDmg",
-        "packageReleaseDmg",
         "runDistributable",
         "runReleaseDistributable",
     )
@@ -139,8 +137,6 @@ tasks.matching {
         val distRoots = listOf(
             layout.buildDirectory.get().asFile.resolve("compose/binaries/main/app"),
             layout.buildDirectory.get().asFile.resolve("compose/binaries/main-release/app"),
-            layout.buildDirectory.get().asFile.resolve("compose/binaries/main/dmg"),
-            layout.buildDirectory.get().asFile.resolve("compose/binaries/main-release/dmg"),
         )
         distRoots
             .filter { it.isDirectory }
@@ -152,6 +148,99 @@ tasks.matching {
             }
             .forEach(::restoreSidecarExecuteBits)
     }
+}
+
+fun runProcess(vararg command: String): Pair<Int, String> {
+    val process = ProcessBuilder(*command).redirectErrorStream(true).start()
+    val output = process.inputStream.bufferedReader().use { it.readText() }
+    return process.waitFor() to output
+}
+
+fun buildDmgWithHdiutil(appBundle: File, dmgFile: File, volumeName: String) {
+    check(appBundle.isDirectory) { "App bundle missing at $appBundle" }
+    val work = dmgFile.parentFile.resolve(".dmg-root")
+    work.deleteRecursively()
+    work.mkdirs()
+    val stagedApp = File(work, appBundle.name)
+    val ditto = runProcess("/usr/bin/ditto", appBundle.absolutePath, stagedApp.absolutePath)
+    check(ditto.first == 0) { "ditto failed: ${ditto.second}" }
+    val link = runProcess("/bin/ln", "-s", "/Applications", File(work, "Applications").absolutePath)
+    check(link.first == 0) { "ln failed: ${link.second}" }
+    dmgFile.parentFile.mkdirs()
+    dmgFile.delete()
+    runProcess("/bin/sync")
+    var lastOutput = ""
+    for (delayMs in listOf(0L, 2_000L, 5_000L, 10_000L, 15_000L)) {
+        if (delayMs > 0) Thread.sleep(delayMs)
+        val (code, output) = runProcess(
+            "/usr/bin/hdiutil",
+            "create",
+            "-volname",
+            volumeName,
+            "-srcfolder",
+            work.absolutePath,
+            "-ov",
+            "-format",
+            "UDZO",
+            "-imagekey",
+            "zlib-level=9",
+            dmgFile.absolutePath,
+        )
+        lastOutput = output
+        if (code == 0 && dmgFile.isFile) {
+            work.deleteRecursively()
+            return
+        }
+        dmgFile.delete()
+    }
+    work.deleteRecursively()
+    error("hdiutil create failed for $dmgFile\n$lastOutput")
+}
+
+fun registerHdiutilDmg(
+    taskName: String,
+    appImageTask: String,
+    appDir: String,
+    dmgDir: String,
+) {
+    tasks.register(taskName) {
+        dependsOn(appImageTask)
+        val dmgOut = layout.buildDirectory.file("$dmgDir/Zapret-${version}.dmg")
+        inputs.dir(layout.buildDirectory.dir(appDir))
+        outputs.file(dmgOut)
+        doLast {
+            val bundle = layout.buildDirectory.get().asFile.resolve(appDir).resolve("Zapret.app")
+            val dest = dmgOut.get().asFile
+            val resources = bundle.resolve("Contents/app/resources")
+            if (resources.isDirectory) restoreSidecarExecuteBits(resources)
+            buildDmgWithHdiutil(bundle, dest, "Zapret")
+            logger.lifecycle("The distribution is written to ${dest.absolutePath}")
+        }
+    }
+}
+
+registerHdiutilDmg(
+    "packageHdiutilDmg",
+    "createDistributable",
+    "compose/binaries/main/app",
+    "compose/binaries/main/dmg",
+)
+registerHdiutilDmg(
+    "packageReleaseHdiutilDmg",
+    "createReleaseDistributable",
+    "compose/binaries/main-release/app",
+    "compose/binaries/main-release/dmg",
+)
+
+// jpackage --type dmg uses hdiutil attach on a temp image; GitHub macos runners
+// often fail that with "Resource busy" right after the sidecar chmod.
+tasks.matching { it.name == "packageDmg" }.configureEach {
+    dependsOn("packageHdiutilDmg")
+    onlyIf { false }
+}
+tasks.matching { it.name == "packageReleaseDmg" }.configureEach {
+    dependsOn("packageReleaseHdiutilDmg")
+    onlyIf { false }
 }
 
 compose.desktop {

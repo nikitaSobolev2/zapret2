@@ -50,6 +50,20 @@ jobs:
         working-directory: app
         run: ./gradlew packageDmg --console=plain -PappVersion=${{ steps.ver.outputs.version }}
 
+      - name: Show packaging logs
+        if: failure()
+        run: |
+          set +e
+          echo "=== app image ==="
+          ls -la app/build/compose/binaries/main/app || true
+          echo "=== dmg ==="
+          ls -la app/build/compose/binaries/main/dmg || true
+          echo "=== compose logs ==="
+          find app/build/compose/logs -type f 2>/dev/null | while read -r file; do
+            echo "----- $file -----"
+            cat "$file"
+          done
+
       - name: Locate DMG
         id: dmg
         run: |
