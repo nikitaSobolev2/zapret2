@@ -86,4 +86,19 @@ class TgWsProxyConfigTest {
     fun defaultIsDisabledSoFreshInstallDoesNotLaunchSidecar() {
         assertFalse(TgWsProxyConfig().enabled)
     }
+
+    @Test
+    fun withLiveEnabledKeepsDraftFields() {
+        val draft = TgWsProxyConfig(
+            enabled = false,
+            host = "10.0.0.1",
+            port = "1555",
+            secret = "0123456789abcdef0123456789abcdef",
+        )
+        val merged = draft.withLiveEnabled(true)
+        assertTrue(merged.enabled)
+        assertEquals("10.0.0.1", merged.host)
+        assertEquals("1555", merged.port)
+        assertEquals(draft.secret, merged.secret)
+    }
 }

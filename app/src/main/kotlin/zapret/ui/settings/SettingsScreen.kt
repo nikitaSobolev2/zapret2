@@ -55,7 +55,7 @@ fun SettingsScreen(
     mod: Modifier = Modifier,
 ) {
     var draft by remember(state.config) { mutableStateOf(state.config) }
-    var tgDraft by remember(state.tgConfig) { mutableStateOf(state.tgConfig) }
+    var tgDraft by remember(state.tgConfig.copy(enabled = false)) { mutableStateOf(state.tgConfig) }
     var lists by remember(state.listContents) { mutableStateOf(state.listContents) }
     var selectedList by remember { mutableStateOf(EngineListsStore.LIST_FILES.first()) }
     var tgAdvanced by remember { mutableStateOf(false) }
@@ -169,12 +169,10 @@ fun SettingsScreen(
             ) {
                 SwitchRow(
                     label = "Включён с Zapret",
-                    checked = tgDraft.enabled,
-                    onChange = { enabled ->
-                        tgDraft = tgDraft.copy(enabled = enabled)
-                        onTgEnabled(enabled)
-                    },
-                    description = "Только Telegram Desktop. Выключается сразу, без «Применить».",
+                    checked = state.tgConfig.enabled,
+                    enabled = editable,
+                    onChange = onTgEnabled,
+                    description = "Только Telegram Desktop. Включается сразу, без «Применить».",
                 )
                 GhostButton(
                     text = if (linkCopied) "Ссылка скопирована" else "Копировать tg://",
@@ -288,7 +286,7 @@ fun SettingsScreen(
                     else -> "Применить и перезапустить"
                 },
                 enabled = editable,
-                onClick = { onApply(draft, tgDraft, lists) },
+                onClick = { onApply(draft, tgDraft.withLiveEnabled(state.tgConfig.enabled), lists) },
                 modifier = Modifier.fillMaxWidth(),
             )
             if (!state.installed) {

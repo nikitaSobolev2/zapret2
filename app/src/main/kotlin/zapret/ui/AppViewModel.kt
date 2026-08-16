@@ -150,10 +150,11 @@ class AppViewModel(private val scope: CoroutineScope) {
         tgConfig: TgWsProxyConfig,
         listDrafts: Map<String, String> = emptyMap(),
     ) = operation("Применение настроек") {
-        TgWsProxyValidation.requireValid(tgConfig)
+        val merged = tgConfig.withLiveEnabled(state.tgConfig.enabled)
+        TgWsProxyValidation.requireValid(merged)
         val zapretResult = configWriter.apply(config, listDrafts)
         if (!zapretResult.ok) return@operation zapretResult
-        orchestrator.applyTg(tgConfig)
+        orchestrator.applyTg(merged)
     }
 
     fun restartTgProxy() = operation("Перезапуск TG proxy") {
@@ -163,6 +164,7 @@ class AppViewModel(private val scope: CoroutineScope) {
     }
 
     fun toggleTgProxy() {
+        if (!canControlServices()) return
         val current = runCatching { tgStore.read() }.getOrDefault(state.tgConfig)
         val enable = !state.tgRunning
         operation(if (enable) "Запуск TG proxy" else "Остановка TG proxy") {
@@ -186,29 +188,17 @@ class AppViewModel(private val scope: CoroutineScope) {
     }
 
     fun setTgEnabled(enabled: Boolean) {
+        if (!canControlServices()) return
         val current = runCatching { tgStore.read() }.getOrDefault(state.tgConfig)
-        if (current.enabled == enabled) return
-        scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                orchestrator.applyTg(current.copy(enabled = enabled))
+        if (current.enabled == enabled) {
+            if (state.tgConfig.enabled != enabled) {
+                state = state.copy(tgConfig = current.copy(enabled = enabled))
             }
-            val status = withContext(Dispatchers.IO) {
-                runCatching { CombinedStatus(service.status(), tgProxy.isRunning()) }
-                    .getOrDefault(CombinedStatus())
-            }
-            val updated = current.copy(enabled = enabled)
-            state = state.withStatus(status).copy(
-                tgConfig = updated,
-                notice = when {
-                    !result.ok -> Notice(
-                        result.lastLine().ifBlank { result.output }.ifBlank { "TG proxy не запущен" },
-                        isError = true,
-                    )
-                    !enabled -> null
-                    else -> state.notice
-                },
-            )
+            return
         }
+        val updated = current.copy(enabled = enabled)
+        state = state.copy(tgConfig = updated, tgRunning = enabled && state.tgRunning)
+        scope.launch { finishSetTgEnabled(current, updated, enabled) }
     }
 
     fun probeStrategies() {
@@ -459,6 +449,37 @@ class AppViewModel(private val scope: CoroutineScope) {
         state = state.copy(
             passwordless = passwordlessOn,
             prerequisites = Prerequisites.probe(passwordlessOn),
+        )
+    }
+
+    private fun canControlServices(): Boolean =
+        state.busy == null && state.probePhase == null
+
+    private suspend fun finishSetTgEnabled(
+        previous: TgWsProxyConfig,
+        updated: TgWsProxyConfig,
+        enabled: Boolean,
+    ) {
+        val result = withContext(Dispatchers.IO) {
+            orchestrator.applyTg(updated)
+        }
+        val status = withContext(Dispatchers.IO) {
+            runCatching { CombinedStatus(service.status(), tgProxy.isRunning()) }
+                .getOrDefault(CombinedStatus())
+        }
+        if (!result.ok) {
+            state = state.withStatus(status).copy(
+                tgConfig = previous,
+                notice = Notice(
+                    result.lastLine().ifBlank { result.output }.ifBlank { "TG proxy не запущен" },
+                    isError = true,
+                ),
+            )
+            return
+        }
+        state = state.withStatus(status).copy(
+            tgConfig = updated,
+            notice = if (!enabled) null else state.notice,
         )
     }
 

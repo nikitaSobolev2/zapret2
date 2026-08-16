@@ -23,6 +23,9 @@ data class TgWsProxyConfig(
     fun telegramProxyLink(): String =
         "tg://proxy?server=${host.trim()}&port=${port.trim()}&secret=dd${secret.trim()}"
 
+    /** Apply other draft fields without clobbering an already-persisted enable flag. */
+    fun withLiveEnabled(enabled: Boolean): TgWsProxyConfig = copy(enabled = enabled)
+
     fun cliArgs(): List<String> {
         val args = mutableListOf(
             "--host", host.trim(),

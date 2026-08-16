@@ -98,6 +98,7 @@ fun SwitchRow(
     checked: Boolean,
     onChange: (Boolean) -> Unit,
     description: String? = null,
+    enabled: Boolean = true,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
@@ -110,7 +111,9 @@ fun SwitchRow(
             .clip(RoundedCornerShape(Dimens.radiusField))
             .background(tint)
             .hoverable(interaction)
-            .clickable(interactionSource = interaction, indication = null) { onChange(!checked) }
+            .clickable(enabled = enabled, interactionSource = interaction, indication = null) {
+                onChange(!checked)
+            }
             .padding(horizontal = Dimens.sm, vertical = Dimens.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -123,6 +126,7 @@ fun SwitchRow(
         }
         Switch(
             checked = checked,
+            enabled = enabled,
             onCheckedChange = onChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Palette.backgroundDeep,
