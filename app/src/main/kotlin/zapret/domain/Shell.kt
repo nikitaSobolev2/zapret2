@@ -5,7 +5,11 @@ import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-data class CommandResult(val exitCode: Int, val output: String) {
+data class CommandResult(
+    val exitCode: Int,
+    val output: String,
+    val warning: String? = null,
+) {
     val ok: Boolean get() = exitCode == 0
 
     /**

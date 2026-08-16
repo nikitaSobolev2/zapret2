@@ -18,9 +18,10 @@ object TgWsProxyPaths {
     /** Packaged onedir binary, or null when running from Gradle without a built sidecar. */
     fun bundledBinary(): File? {
         val resources = System.getProperty("compose.application.resources.dir")?.let(::File) ?: return null
-        val candidate = File(resources, "tg-ws-proxy/tg-ws-proxy")
-        if (!candidate.isFile) return null
-        // DMG / Homebrew installs often drop the execute bit from nested Mach-O binaries.
+        val dir = File(resources, "tg-ws-proxy")
+        val candidate = File(dir, "tg-ws-proxy")
+        if (!candidate.isFile || !File(dir, "_internal").isDirectory) return null
+        restoreExecuteBits(dir)
         if (!candidate.canExecute()) {
             candidate.setExecutable(true, false)
         }
@@ -33,5 +34,17 @@ object TgWsProxyPaths {
         return generateSequence(cwd) { it.parentFile }
             .map { File(it, "third_party/tg-ws-proxy") }
             .firstOrNull { File(it, "proxy/tg_ws_proxy.py").isFile }
+    }
+
+    private fun restoreExecuteBits(dir: File) {
+        dir.walkTopDown().forEach { file ->
+            if (!file.isFile) return@forEach
+            val name = file.name
+            if (name == "tg-ws-proxy" || name == "Python" ||
+                name.endsWith(".so") || name.endsWith(".dylib")
+            ) {
+                file.setExecutable(true, false)
+            }
+        }
     }
 }

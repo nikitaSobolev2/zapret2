@@ -37,8 +37,10 @@ Unsigned builds may still need `xattr -cr` once after replace.
 
 ### Telegram Desktop fix
 
+Off by default so a sidecar crash cannot block Zapret. To use it:
+
 1. Start Zapret (power button → status «Работает»).
-2. **Settings → Telegram MTProto proxy** — leave **«Включён с Zapret»** on.
+2. **Settings → Telegram MTProto** — turn on **«Включён с Zapret»** (takes effect immediately).
 3. Click **«Открыть в Telegram»**.
 4. Fallback: copy `tg://` link.
 

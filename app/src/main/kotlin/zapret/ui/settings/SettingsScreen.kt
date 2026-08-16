@@ -48,6 +48,7 @@ fun SettingsScreen(
     onUninstall: (UninstallScope) -> Unit,
     onPasswordless: (Boolean) -> Unit,
     onAutoUpdate: (Boolean) -> Unit,
+    onTgEnabled: (Boolean) -> Unit,
     onCheckUpdates: () -> Unit,
     onUpdateNow: () -> Unit,
     onProbeStrategies: () -> Unit,
@@ -169,7 +170,11 @@ fun SettingsScreen(
                 SwitchRow(
                     label = "Включён с Zapret",
                     checked = tgDraft.enabled,
-                    onChange = { tgDraft = tgDraft.copy(enabled = it) },
+                    onChange = { enabled ->
+                        tgDraft = tgDraft.copy(enabled = enabled)
+                        onTgEnabled(enabled)
+                    },
+                    description = "Только Telegram Desktop. Выключается сразу, без «Применить».",
                 )
                 GhostButton(
                     text = if (linkCopied) "Ссылка скопирована" else "Копировать tg://",

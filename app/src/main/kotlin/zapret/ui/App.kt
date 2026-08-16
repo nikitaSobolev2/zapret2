@@ -45,6 +45,7 @@ fun App(model: AppViewModel) = ZapretTheme {
                         onUninstall = model::uninstall,
                         onPasswordless = model::setPasswordless,
                         onAutoUpdate = model::setAutoUpdate,
+                        onTgEnabled = model::setTgEnabled,
                         onCheckUpdates = model::checkForUpdates,
                         onUpdateNow = { model.startUpdate() },
                         onProbeStrategies = model::probeStrategies,

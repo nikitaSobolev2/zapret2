@@ -104,6 +104,16 @@ fun restoreSidecarExecuteBits(root: File) {
     root.resolve("engine").listFiles()
         ?.filter { it.isFile && it.name.endsWith(".sh") }
         ?.forEach { it.setExecutable(true, false) }
+    val sidecar = root.resolve("tg-ws-proxy")
+    if (sidecar.isDirectory) {
+        sidecar.walkTopDown().forEach { file ->
+            if (!file.isFile) return@forEach
+            val name = file.name
+            if (name == "Python" || name.endsWith(".so") || name.endsWith(".dylib")) {
+                file.setExecutable(true, false)
+            }
+        }
+    }
 }
 
 tasks.matching { it.name == "prepareAppResources" }.configureEach {

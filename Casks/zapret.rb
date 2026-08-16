@@ -34,6 +34,13 @@ cask "zapret" do
     ].each do |binary|
       File.chmod(0o755, binary) if File.exist?(binary)
     end
+
+    sidecar = "#{appdir}/Zapret.app/Contents/app/resources/tg-ws-proxy"
+    if File.directory?(sidecar)
+      Dir.glob("#{sidecar}/**/*.{so,dylib}").each { |lib| File.chmod(0o755, lib) }
+      python = "#{sidecar}/_internal/Python"
+      File.chmod(0o755, python) if File.exist?(python)
+    end
   end
 
   zap trash: [

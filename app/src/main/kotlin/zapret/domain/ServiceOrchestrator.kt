@@ -12,10 +12,7 @@ class ServiceOrchestrator(
     fun startAll(): CommandResult {
         val zapretResult = zapret.start()
         if (!zapretResult.ok) return zapretResult
-        val tg = tgStore.read()
-        if (!tg.enabled) return zapretResult
-        val tgResult = tgProxy.start(tg)
-        return if (tgResult.ok) zapretResult else merge(zapretResult, tgResult)
+        return zapretResult.withOptionalTg(startOptionalTg())
     }
 
     fun stopAll(): CommandResult {
@@ -32,8 +29,23 @@ class ServiceOrchestrator(
         val zapretResult = zapret.restart()
         if (!zapretResult.ok) return zapretResult
         val tg = tgStore.read()
-        val tgResult = if (tg.enabled) tgProxy.restart(tg) else tgProxy.stop()
-        return if (tgResult.ok) zapretResult else merge(zapretResult, tgResult)
+        if (!tg.enabled) {
+            tgProxy.stop()
+            return zapretResult
+        }
+        return zapretResult.withOptionalTg(tgProxy.restart(tg))
+    }
+
+    /**
+     * Starts TG WS Proxy when enabled. A sidecar crash must not fail Zapret itself.
+     */
+    fun startOptionalTg(): CommandResult {
+        val tg = tgStore.read()
+        if (!tg.enabled) return CommandResult(0, "tg-ws-proxy disabled")
+        val started = tgProxy.start(tg)
+        if (started.ok) return started
+        val detail = started.lastLine().ifBlank { "tg-ws-proxy failed" }
+        return CommandResult(0, started.output, warning = "TG proxy не запущен: $detail")
     }
 
     fun applyTg(config: TgWsProxyConfig): CommandResult {
@@ -49,9 +61,10 @@ class ServiceOrchestrator(
 
     fun tgRunning(): Boolean = tgProxy.isRunning()
 
-    private fun merge(primary: CommandResult, secondary: CommandResult): CommandResult =
-        CommandResult(
-            exitCode = if (primary.ok && secondary.ok) 0 else 1,
-            output = listOf(primary.output, secondary.output).filter { it.isNotBlank() }.joinToString("\n"),
-        )
+    private fun CommandResult.withOptionalTg(tgResult: CommandResult): CommandResult {
+        if (tgResult.ok && tgResult.warning == null) return this
+        val warning = tgResult.warning
+            ?: "TG proxy не запущен: ${tgResult.lastLine().ifBlank { tgResult.output }}"
+        return copy(warning = warning)
+    }
 }

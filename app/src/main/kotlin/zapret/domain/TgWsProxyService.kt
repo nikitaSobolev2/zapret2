@@ -87,7 +87,9 @@ class TgWsProxyService : TgWsProxyControl {
     )
 
     private fun resolveLaunch(): Launch? {
-        TgWsProxyPaths.bundledBinary()?.let { return Launch(listOf(it.absolutePath)) }
+        TgWsProxyPaths.bundledBinary()?.let {
+            return Launch(listOf(it.absolutePath), workDir = it.parentFile)
+        }
 
         val source = TgWsProxyPaths.sourcePackageRoot() ?: return null
         val python = sequenceOf(

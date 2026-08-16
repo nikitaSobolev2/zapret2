@@ -7,7 +7,7 @@ import java.security.SecureRandom
  * Stored in Application Support JSON, not in `/opt/zapret2/config`.
  */
 data class TgWsProxyConfig(
-    val enabled: Boolean = true,
+    val enabled: Boolean = false,
     val host: String = "127.0.0.1",
     val port: String = "1443",
     val secret: String = newSecret(),

@@ -81,4 +81,9 @@ class TgWsProxyConfigTest {
         assertTrue(secret.all { it in '0'..'9' || it in 'a'..'f' })
         assertFalse(secret == TgWsProxyConfig.newSecret())
     }
+
+    @Test
+    fun defaultIsDisabledSoFreshInstallDoesNotLaunchSidecar() {
+        assertFalse(TgWsProxyConfig().enabled)
+    }
 }

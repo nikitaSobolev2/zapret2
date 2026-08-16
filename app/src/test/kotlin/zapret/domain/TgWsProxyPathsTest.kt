@@ -14,6 +14,7 @@ class TgWsProxyPathsTest {
         val resources = kotlin.io.path.createTempDirectory("tg-ws-resources").toFile()
         val binary = File(resources, "tg-ws-proxy/tg-ws-proxy")
         binary.parentFile.mkdirs()
+        File(binary.parentFile, "_internal").mkdirs()
         binary.writeText("#!/bin/sh\n")
         binary.setReadable(true, false)
         binary.setWritable(true, false)
@@ -41,6 +42,27 @@ class TgWsProxyPathsTest {
     @Test
     fun bundledBinaryMissingWhenAbsent() {
         val resources = kotlin.io.path.createTempDirectory("tg-ws-empty").toFile()
+        val previous = System.getProperty("compose.application.resources.dir")
+        System.setProperty("compose.application.resources.dir", resources.absolutePath)
+        try {
+            assertNull(TgWsProxyPaths.bundledBinary())
+        } finally {
+            if (previous == null) {
+                System.clearProperty("compose.application.resources.dir")
+            } else {
+                System.setProperty("compose.application.resources.dir", previous)
+            }
+            resources.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun bundledBinaryMissingWhenInternalDirAbsent() {
+        val resources = kotlin.io.path.createTempDirectory("tg-ws-no-internal").toFile()
+        val binary = File(resources, "tg-ws-proxy/tg-ws-proxy")
+        binary.parentFile.mkdirs()
+        binary.writeText("#!/bin/sh\n")
+        binary.setExecutable(true, false)
         val previous = System.getProperty("compose.application.resources.dir")
         System.setProperty("compose.application.resources.dir", resources.absolutePath)
         try {

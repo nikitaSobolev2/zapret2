@@ -141,10 +141,7 @@ class AppViewModel(private val scope: CoroutineScope) {
         operation("Установка") {
             val installed = installer.install { step -> state = state.copy(busy = step) }
             if (!installed.ok) return@operation installed
-            val tg = tgStore.read()
-            if (!tg.enabled) return@operation installed
-            val tgStart = tgProxy.start(tg)
-            if (tgStart.ok) installed else tgStart
+            installed.withWarningFrom(orchestrator.startOptionalTg())
         }
     }
 
@@ -178,6 +175,28 @@ class AppViewModel(private val scope: CoroutineScope) {
         val prefs = AppPrefs(autoUpdate = enabled)
         prefsStore.write(prefs)
         state = state.copy(autoUpdate = enabled)
+    }
+
+    fun setTgEnabled(enabled: Boolean) {
+        val current = runCatching { tgStore.read() }.getOrDefault(state.tgConfig)
+        if (current.enabled == enabled) return
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                orchestrator.applyTg(current.copy(enabled = enabled))
+            }
+            if (result.ok && !enabled) {
+                state = state.copy(notice = null)
+                return@launch
+            }
+            if (!result.ok) {
+                state = state.copy(
+                    notice = Notice(
+                        result.lastLine().ifBlank { result.output }.ifBlank { "TG proxy не запущен" },
+                        isError = true,
+                    ),
+                )
+            }
+        }
     }
 
     fun probeStrategies() {
@@ -452,6 +471,12 @@ class AppViewModel(private val scope: CoroutineScope) {
         if (error != null) return Notice(error.message ?: error.toString(), isError = true)
 
         val result = getOrThrow()
-        return if (result.ok) null else Notice("$label не удалось: ${result.lastLine()}", isError = true)
+        if (result.ok) {
+            return result.warning?.let { Notice(it, isError = true) }
+        }
+        return Notice("$label не удалось: ${result.lastLine()}", isError = true)
     }
+
+    private fun CommandResult.withWarningFrom(other: CommandResult): CommandResult =
+        if (other.warning != null) copy(warning = other.warning) else this
 }

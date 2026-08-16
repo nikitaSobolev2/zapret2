@@ -28,5 +28,6 @@ cd "$ROOT"
 rm -rf "$DEST"
 mkdir -p "$(dirname "$DEST")"
 cp -R "$WORK/dist/tg-ws-proxy" "$DEST"
-chmod +x "$DEST/tg-ws-proxy"
+find "$DEST" \( -name 'tg-ws-proxy' -o -name 'Python' -o -name '*.so' -o -name '*.dylib' \) \
+	-exec chmod +x {} +
 echo "built $DEST/tg-ws-proxy"
