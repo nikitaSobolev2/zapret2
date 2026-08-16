@@ -1,5 +1,3 @@
-import org.jetbrains.compose.desktop.application.dsl.TargetFormat
-
 plugins {
     kotlin("jvm") version "2.3.21"
     id("org.jetbrains.kotlin.plugin.compose") version "2.3.21"
@@ -213,34 +211,11 @@ fun registerHdiutilDmg(
             val dest = dmgOut.get().asFile
             val resources = bundle.resolve("Contents/app/resources")
             if (resources.isDirectory) restoreSidecarExecuteBits(resources)
+            logger.lifecycle("Packaging ${dest.name} with hdiutil (not jpackage)")
             buildDmgWithHdiutil(bundle, dest, "Zapret")
             logger.lifecycle("The distribution is written to ${dest.absolutePath}")
         }
     }
-}
-
-registerHdiutilDmg(
-    "packageHdiutilDmg",
-    "createDistributable",
-    "compose/binaries/main/app",
-    "compose/binaries/main/dmg",
-)
-registerHdiutilDmg(
-    "packageReleaseHdiutilDmg",
-    "createReleaseDistributable",
-    "compose/binaries/main-release/app",
-    "compose/binaries/main-release/dmg",
-)
-
-// jpackage --type dmg uses hdiutil attach on a temp image; GitHub macos runners
-// often fail that with "Resource busy" right after the sidecar chmod.
-tasks.matching { it.name == "packageDmg" }.configureEach {
-    dependsOn("packageHdiutilDmg")
-    onlyIf { false }
-}
-tasks.matching { it.name == "packageReleaseDmg" }.configureEach {
-    dependsOn("packageReleaseHdiutilDmg")
-    onlyIf { false }
 }
 
 compose.desktop {
@@ -248,7 +223,6 @@ compose.desktop {
         mainClass = "zapret.MainKt"
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg)
             packageName = "Zapret"
             packageVersion = project.version.toString()
             description = "Управление zapret на macOS (utunws)"
@@ -263,5 +237,25 @@ compose.desktop {
                 iconFile.set(project.file("icons/Zapret.icns"))
             }
         }
+    }
+}
+
+registerHdiutilDmg(
+    "packageDmg",
+    "createDistributable",
+    "compose/binaries/main/app",
+    "compose/binaries/main/dmg",
+)
+registerHdiutilDmg(
+    "packageReleaseDmg",
+    "createReleaseDistributable",
+    "compose/binaries/main-release/app",
+    "compose/binaries/main-release/dmg",
+)
+
+gradle.projectsEvaluated {
+    val dmgClass = tasks.getByName("packageDmg").javaClass.name
+    check(!dmgClass.contains("JPackage") && !dmgClass.contains("jpackage")) {
+        "packageDmg is still $dmgClass; Compose jpackage DMG must not be registered"
     }
 }
