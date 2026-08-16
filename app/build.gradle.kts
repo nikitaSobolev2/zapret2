@@ -155,44 +155,29 @@ fun runProcess(vararg command: String): Pair<Int, String> {
 }
 
 fun buildDmgWithHdiutil(appBundle: File, dmgFile: File, volumeName: String) {
-    check(appBundle.isDirectory) { "App bundle missing at $appBundle" }
-    val work = dmgFile.parentFile.resolve(".dmg-root")
-    work.deleteRecursively()
-    work.mkdirs()
-    val stagedApp = File(work, appBundle.name)
-    val ditto = runProcess("/usr/bin/ditto", appBundle.absolutePath, stagedApp.absolutePath)
-    check(ditto.first == 0) { "ditto failed: ${ditto.second}" }
-    val link = runProcess("/bin/ln", "-s", "/Applications", File(work, "Applications").absolutePath)
-    check(link.first == 0) { "ln failed: ${link.second}" }
-    dmgFile.parentFile.mkdirs()
-    dmgFile.delete()
-    runProcess("/bin/sync")
-    var lastOutput = ""
-    for (delayMs in listOf(0L, 2_000L, 5_000L, 10_000L, 15_000L)) {
-        if (delayMs > 0) Thread.sleep(delayMs)
-        val (code, output) = runProcess(
-            "/usr/bin/hdiutil",
-            "create",
-            "-volname",
-            volumeName,
-            "-srcfolder",
-            work.absolutePath,
-            "-ov",
-            "-format",
-            "UDZO",
-            "-imagekey",
-            "zlib-level=9",
-            dmgFile.absolutePath,
-        )
-        lastOutput = output
-        if (code == 0 && dmgFile.isFile) {
-            work.deleteRecursively()
-            return
-        }
-        dmgFile.delete()
+    check(appBundle.isDirectory && appBundle.name == "Zapret.app") {
+        "App bundle missing at $appBundle"
     }
-    work.deleteRecursively()
-    error("hdiutil create failed for $dmgFile\n$lastOutput")
+    val srcFolder = appBundle.parentFile
+    check(srcFolder != null && srcFolder.resolve("Zapret.app") == appBundle) {
+        "Zapret.app must sit in its Gradle output folder"
+    }
+    dmgFile.parentFile.mkdirs()
+    val (code, output) = runProcess(
+        "/usr/bin/hdiutil",
+        "create",
+        "-volname",
+        volumeName,
+        "-srcfolder",
+        srcFolder.absolutePath,
+        "-ov",
+        "-format",
+        "UDZO",
+        "-imagekey",
+        "zlib-level=9",
+        dmgFile.absolutePath,
+    )
+    check(code == 0 && dmgFile.isFile) { "hdiutil create failed for $dmgFile\n$output" }
 }
 
 fun registerHdiutilDmg(
