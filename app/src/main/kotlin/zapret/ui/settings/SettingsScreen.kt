@@ -328,6 +328,7 @@ private fun ProbeSummary(report: StrategyProbeReport) {
                 text = "${row.strategyId}: ${row.score} · ${stab}% · $ping" +
                     " (D ${row.discord.successes}/${row.discord.attempts}" +
                     " Y ${row.youtube.successes}/${row.youtube.attempts}" +
+                    " V ${row.googlevideo.successes}/${row.googlevideo.attempts}" +
                     " C ${row.control.successes}/${row.control.attempts})",
                 style = MaterialTheme.typography.labelSmall,
                 color = Palette.textMuted,

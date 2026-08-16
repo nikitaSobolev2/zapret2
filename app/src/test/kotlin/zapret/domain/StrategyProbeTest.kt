@@ -54,7 +54,7 @@ class StrategyProbeTest {
     }
 
     @Test
-    fun youtubeOkRequiresSiteAndCdn() {
+    fun youtubeOkRequiresSiteAndVideo() {
         val siteOnly = row(
             "site-only",
             discord = HostProbeMetrics(3, 3, 50),

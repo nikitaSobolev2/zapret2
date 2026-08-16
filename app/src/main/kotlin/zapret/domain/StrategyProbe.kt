@@ -36,7 +36,7 @@ data class StrategyProbeRow(
     val control: HostProbeMetrics,
 ) {
     val discordOk: Boolean get() = discord.ok
-    /** Site alone is not enough — UI “no internet” often means CDN/API dead. */
+    /** Site shell is not enough — playback must also fetch googlevideo bytes. */
     val youtubeOk: Boolean get() = youtube.ok && googlevideo.ok
     /** Control must be mostly stable, not a single lucky hit. */
     val controlOk: Boolean
@@ -167,7 +167,7 @@ class StrategyProbe(
                 appendLog(
                     "$id score=${row.score} discord=${discord.successes}/${discord.attempts}" +
                         "@${discord.avgLatencyMs ?: "-"}ms yt=${youtube.successes}/${youtube.attempts}" +
-                        "@${youtube.avgLatencyMs ?: "-"}ms gv=${googlevideo.successes}/${googlevideo.attempts}" +
+                        "@${youtube.avgLatencyMs ?: "-"}ms video=${googlevideo.successes}/${googlevideo.attempts}" +
                         "@${googlevideo.avgLatencyMs ?: "-"}ms ctrl=${control.successes}/${control.attempts}" +
                         "@${control.avgLatencyMs ?: "-"}ms",
                 )
@@ -215,11 +215,96 @@ class StrategyProbe(
 
     private fun probeHost(host: String): HostProbeMetrics = probeUrl("https://$host/")
 
-    /** Hit a resolving googlevideo POP — fixed hostnames go stale across regions. */
+    /**
+     * Load a real YouTube media chunk (videoplayback). `/generate_204` on a POP
+     * is only a fallback when innertube does not yield a URL.
+     */
     private fun probeGooglevideo(): HostProbeMetrics {
+        val playback = fetchYoutubePlaybackUrl()
+        if (playback != null) return probeVideoPlayback(playback)
+        appendLog("no videoplayback url, fallback generate_204")
+        return probeGooglevideoGenerate204()
+    }
+
+    private fun probeGooglevideoGenerate204(): HostProbeMetrics {
         val host = GOOGLEVIDEO_CANDIDATES.firstOrNull(::hostResolves)
             ?: return HostProbeMetrics.fromLatencies(emptyList(), attempts = SAMPLES)
         return probeUrl("https://$host/generate_204")
+    }
+
+    private fun fetchYoutubePlaybackUrl(): String? {
+        for (client in YoutubePlaybackUrls.clients) {
+            if (cancelRequested.get()) return null
+            val json = postYoutubePlayer(client) ?: continue
+            YoutubePlaybackUrls.firstFromPlayerJson(json)?.let { return it }
+        }
+        return null
+    }
+
+    private fun postYoutubePlayer(client: YoutubePlaybackUrls.Client): String? {
+        val request = File.createTempFile("zapret-yt-req", ".json")
+        val response = File.createTempFile("zapret-yt-resp", ".json")
+        try {
+            request.writeText(client.body)
+            val result = Shell.run(
+                "/usr/bin/curl",
+                "-sS",
+                "-o", response.absolutePath,
+                "-w", "%{http_code}",
+                "--connect-timeout", "5",
+                "--max-time", "12",
+                "-H", "Content-Type: application/json",
+                "-H", "User-Agent: ${client.userAgent}",
+                "-X", "POST",
+                "--data-binary", "@${request.absolutePath}",
+                YoutubePlaybackUrls.PLAYER_URL,
+                timeout = 15.seconds,
+            )
+            val http = result.output.trim().toIntOrNull() ?: return null
+            if (!(result.ok && http in 200..299 && response.length() > 0)) return null
+            return response.readText()
+        } finally {
+            request.delete()
+            response.delete()
+        }
+    }
+
+    private fun probeVideoPlayback(url: String): HostProbeMetrics {
+        val latencies = mutableListOf<Int>()
+        repeat(SAMPLES) {
+            if (cancelRequested.get()) {
+                return HostProbeMetrics.fromLatencies(latencies, attempts = SAMPLES)
+            }
+            sampleVideoPlayback(url)?.let { latencies += it }
+            Thread.sleep(SAMPLE_GAP_MS)
+        }
+        return HostProbeMetrics.fromLatencies(latencies, attempts = SAMPLES)
+    }
+
+    /** HTTP 206/200 plus at least 2 KiB of media — not an empty/error page. */
+    private fun sampleVideoPlayback(url: String): Int? {
+        val result = Shell.run(
+            "/usr/bin/curl",
+            "-sS",
+            "-o", "/dev/null",
+            "-w", "%{http_code} %{time_total} %{size_download}",
+            "--connect-timeout", "3",
+            "--max-time", "10",
+            "-L",
+            "-r", "0-65535",
+            "-H", "Origin: https://www.youtube.com",
+            "-H", "Referer: https://www.youtube.com/",
+            "-A", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            url,
+            timeout = 14.seconds,
+        )
+        val parts = result.output.trim().split(Regex("\\s+"))
+        if (parts.size < 3) return null
+        val http = parts[0].toIntOrNull() ?: return null
+        val seconds = parts[1].toDoubleOrNull() ?: return null
+        val bytes = parts[2].toLongOrNull() ?: return null
+        if (!(result.ok && http in 200..299 && bytes >= 2048)) return null
+        return (seconds * 1000.0).toInt().coerceAtLeast(1)
     }
 
     private fun hostResolves(host: String): Boolean {
@@ -293,7 +378,7 @@ class StrategyProbe(
         )
 
         /**
-         * YouTube needs CDN (googlevideo) too — page shell alone still shows “no internet”.
+         * YouTube needs a real googlevideo `videoplayback` chunk, not only the site shell.
          * Skip simple-fake*: fake+ts often kills YT TLS while Discord still works.
          */
         val SHORTLIST = listOf(
