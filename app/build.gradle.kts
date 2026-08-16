@@ -154,30 +154,44 @@ fun runProcess(vararg command: String): Pair<Int, String> {
     return process.waitFor() to output
 }
 
-fun buildDmgWithHdiutil(appBundle: File, dmgFile: File, volumeName: String) {
-    check(appBundle.isDirectory && appBundle.name == "Zapret.app") {
-        "App bundle missing at $appBundle"
+fun File.requireInside(root: File): File {
+    val canonical = canonicalFile
+    val prefix = root.canonicalFile.path + File.separator
+    check(canonical.path.startsWith(prefix)) {
+        "Refusing path outside Gradle build dir: $canonical"
     }
-    val srcFolder = appBundle.parentFile
-    check(srcFolder != null && srcFolder.resolve("Zapret.app") == appBundle) {
+    return canonical
+}
+
+fun buildDmgWithHdiutil(appBundle: File, dmgFile: File, volumeName: String, buildRoot: File) {
+    val bundle = appBundle.requireInside(buildRoot)
+    val dest = dmgFile.requireInside(buildRoot)
+    check(bundle.isDirectory && bundle.name == "Zapret.app") {
+        "App bundle missing at $bundle"
+    }
+    val srcFolder = bundle.parentFile.requireInside(buildRoot)
+    check(srcFolder.resolve("Zapret.app").canonicalFile == bundle) {
         "Zapret.app must sit in its Gradle output folder"
     }
-    dmgFile.parentFile.mkdirs()
+    check(srcFolder.listFiles().orEmpty().none { it.name == "Applications" }) {
+        "DMG source must not contain Applications"
+    }
+    dest.parentFile.mkdirs()
     val (code, output) = runProcess(
         "/usr/bin/hdiutil",
         "create",
         "-volname",
         volumeName,
         "-srcfolder",
-        srcFolder.absolutePath,
+        srcFolder.path,
         "-ov",
         "-format",
         "UDZO",
         "-imagekey",
         "zlib-level=9",
-        dmgFile.absolutePath,
+        dest.path,
     )
-    check(code == 0 && dmgFile.isFile) { "hdiutil create failed for $dmgFile\n$output" }
+    check(code == 0 && dest.isFile) { "hdiutil create failed for $dest\n$output" }
 }
 
 fun registerHdiutilDmg(
@@ -197,7 +211,7 @@ fun registerHdiutilDmg(
             val resources = bundle.resolve("Contents/app/resources")
             if (resources.isDirectory) restoreSidecarExecuteBits(resources)
             logger.lifecycle("Packaging ${dest.name} with hdiutil (not jpackage)")
-            buildDmgWithHdiutil(bundle, dest, "Zapret")
+            buildDmgWithHdiutil(bundle, dest, "Zapret", layout.buildDirectory.get().asFile)
             logger.lifecycle("The distribution is written to ${dest.absolutePath}")
         }
     }
