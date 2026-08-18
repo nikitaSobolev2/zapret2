@@ -148,11 +148,13 @@ fun ValueField(
     textStyle: TextStyle = MaterialTheme.typography.bodyLarge,
     minHeight: Dp = Dp.Unspecified,
     description: String? = null,
+    enabled: Boolean = true,
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Dimens.xs)) {
         OutlinedTextField(
             value = value,
             onValueChange = onChange,
+            enabled = enabled,
             label = { Text(label, color = Palette.textMuted) },
             singleLine = singleLine,
             textStyle = textStyle,

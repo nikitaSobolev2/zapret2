@@ -113,8 +113,13 @@ if [ "$IPSET_MODE" = "loaded" ]; then
 fi
 for NAME in $LIST_NAMES; do
     SOURCE_LIST="$DATA_ROOT/lists/$NAME"
-    if [ -L "$SOURCE_LIST" ] || [ ! -f "$SOURCE_LIST" ]; then exit 1; fi
-    /usr/bin/install -m 0644 "$SOURCE_LIST" "$RUNTIME_LISTS/$NAME"
+    if [ -L "$SOURCE_LIST" ]; then exit 1; fi
+    if [ -f "$SOURCE_LIST" ]; then
+        /usr/bin/install -m 0644 "$SOURCE_LIST" "$RUNTIME_LISTS/$NAME"
+    else
+        # Missing user lists must not abort utunws; strategies still open these paths.
+        /usr/bin/printf '' >"$RUNTIME_LISTS/$NAME"
+    fi
 done
 # Keep a tiny placeholder so strategies referencing ipset-all stay readable when mode != loaded.
 if [ "$IPSET_MODE" != "loaded" ]; then

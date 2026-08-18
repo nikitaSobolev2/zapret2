@@ -12,12 +12,12 @@ class EngineListsStore(
 
     fun ensureSeeded() {
         listsDir.mkdirs()
-        val defaults = defaultsDir() ?: return
+        val defaults = defaultsDir()
         for (name in LIST_FILES) {
             val target = File(listsDir, name)
             if (target.isFile) continue
-            val source = File(defaults, name)
-            if (source.isFile) {
+            val source = defaults?.let { File(it, name) }
+            if (source != null && source.isFile) {
                 source.copyTo(target, overwrite = false)
             } else {
                 target.writeText("")
@@ -81,7 +81,12 @@ class EngineListsStore(
     fun writeList(name: String, text: String) {
         require(name in LIST_FILES) { "unknown list: $name" }
         listsDir.mkdirs()
-        File(listsDir, name).writeText(text)
+        val normalized = if (name.startsWith("ipset-")) {
+            HostListText.normalizeIpset(text)
+        } else {
+            HostListText.normalizeHosts(text)
+        }
+        File(listsDir, name).writeText(normalized)
     }
 
     fun resetList(name: String) {
@@ -102,9 +107,11 @@ class EngineListsStore(
     }
 
     companion object {
+        const val USER_HOST_LIST = "list-general-user.txt"
+
         val LIST_FILES = listOf(
             "list-general.txt",
-            "list-general-user.txt",
+            USER_HOST_LIST,
             "list-google.txt",
             "list-exclude.txt",
             "list-exclude-user.txt",
@@ -115,7 +122,7 @@ class EngineListsStore(
 
         val LIST_LABELS = mapOf(
             "list-general.txt" to "Домены (general)",
-            "list-general-user.txt" to "Домены пользователя",
+            USER_HOST_LIST to "Домены пользователя",
             "list-google.txt" to "Домены Google",
             "list-exclude.txt" to "Исключения доменов",
             "list-exclude-user.txt" to "Исключения доменов (user)",

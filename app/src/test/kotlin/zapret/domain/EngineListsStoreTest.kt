@@ -49,6 +49,35 @@ class EngineListsStoreTest {
     }
 
     @Test
+    fun writeListNormalizesPastedUserHost() {
+        val root = File.createTempFile("zapret-lists", "").apply {
+            delete()
+            mkdirs()
+            deleteOnExit()
+        }
+        val listsDir = File(root, "lists")
+        val store = EngineListsStore(listsDir = listsDir, defaultsDir = { null })
+        store.writeList(EngineListsStore.USER_HOST_LIST, "https://My.Site.dev/watch\n")
+        assertEquals("my.site.dev\n", store.readList(EngineListsStore.USER_HOST_LIST))
+    }
+
+    @Test
+    fun seedCreatesEmptyFilesWhenDefaultsMissing() {
+        val root = File.createTempFile("zapret-lists", "").apply {
+            delete()
+            mkdirs()
+            deleteOnExit()
+        }
+        val listsDir = File(root, "lists")
+        val store = EngineListsStore(listsDir = listsDir, defaultsDir = { null })
+        store.ensureSeeded()
+        for (name in EngineListsStore.LIST_FILES) {
+            assertTrue(File(listsDir, name).isFile, name)
+            assertEquals("", store.readList(name), name)
+        }
+    }
+
+    @Test
     fun ipsetModeRoundTrip() {
         assertEquals(IpsetMode.LOADED, IpsetMode.of("loaded"))
         assertEquals(IpsetMode.ANY, IpsetMode.of("any"))

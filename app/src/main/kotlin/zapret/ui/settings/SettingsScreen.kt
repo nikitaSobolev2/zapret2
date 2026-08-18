@@ -57,7 +57,7 @@ fun SettingsScreen(
     var draft by remember(state.config) { mutableStateOf(state.config) }
     var tgDraft by remember(state.tgConfig.copy(enabled = false)) { mutableStateOf(state.tgConfig) }
     var lists by remember(state.listContents) { mutableStateOf(state.listContents) }
-    var selectedList by remember { mutableStateOf(EngineListsStore.LIST_FILES.first()) }
+    var selectedList by remember { mutableStateOf(EngineListsStore.USER_HOST_LIST) }
     var tgAdvanced by remember { mutableStateOf(false) }
     var systemAdvanced by remember { mutableStateOf(false) }
     var askUninstall by remember { mutableStateOf(false) }
@@ -131,7 +131,10 @@ fun SettingsScreen(
                 )
             }
 
-            Section(title = "Списки", description = "~/Library/Application Support/Zapret/lists") {
+            Section(
+                title = "Списки",
+                description = "Свой сайт — «Домены пользователя». Путь: ~/Library/Application Support/Zapret/lists",
+            ) {
                 DropdownField(
                     label = "Файл",
                     value = listLabel,
@@ -146,6 +149,8 @@ fun SettingsScreen(
                     singleLine = false,
                     textStyle = MonoStyle,
                     minHeight = 140.dp,
+                    enabled = editable,
+                    description = "Один хост на строку, без https:// и без *. Поддомены совпадают сами. Нужен «Применить и перезапустить».",
                 )
                 TextAction(
                     text = "Сбросить выбранный",
