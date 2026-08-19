@@ -12,6 +12,9 @@ case "$DATA_ROOT" in
     /Users/*/'Library/Application Support/Zapret') ;;
     *) echo 'invalid user data path'; exit 1 ;;
 esac
+case "$DATA_ROOT" in
+    *['|&;$`"\\<>']*|*$'\n'*|*$'\r'*) echo 'invalid user data path'; exit 1 ;;
+esac
 
 # Tear down legacy tpws (/opt/zapret2) install if present.
 migrate_legacy_tpws() {
@@ -54,7 +57,14 @@ migrate_legacy_tpws
 /usr/bin/find "$DEST" -type d -exec /bin/chmod 755 {} +
 /usr/bin/find "$DEST" -type f -exec /bin/chmod 644 {} +
 /bin/chmod 755 "$DEST/install.sh" "$DEST/run.sh" "$DEST/restart.sh" "$DEST/stop.sh" "$DEST/watchdog.sh" "$DEST/uninstall.sh" "$DEST/bin/utunws"
-/usr/bin/sed "s|@DATA_ROOT@|$DATA_ROOT|g" "$DEST/org.zapret.macos.engine.plist.in" > "$PLIST"
+DATA_ROOT="$DATA_ROOT" /usr/bin/awk '
+BEGIN { r = ENVIRON["DATA_ROOT"] }
+{
+  n = split($0, a, "@DATA_ROOT@")
+  out = a[1]
+  for (i = 2; i <= n; i++) out = out r a[i]
+  print out
+}' "$DEST/org.zapret.macos.engine.plist.in" > "$PLIST"
 /usr/sbin/chown root:wheel "$PLIST"
 /bin/chmod 644 "$PLIST"
 /bin/launchctl enable system/"$LABEL"

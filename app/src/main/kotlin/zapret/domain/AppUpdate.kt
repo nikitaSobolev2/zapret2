@@ -1,10 +1,11 @@
 package zapret.domain
 
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URI
 import java.nio.file.Files
-import java.nio.file.StandardCopyOption
+import java.nio.file.LinkOption
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.seconds
@@ -60,21 +61,31 @@ class AppUpdateService(
         val expectedSha = info.sha256 ?: fetchCaskSha256(info.version, currentMacDmgArch())
             ?: error("missing SHA-256 for ${info.assetName}")
         val dest = File(AppPrefsPaths.cacheDir, info.assetName)
-        val connection = open(info.downloadUrl, timeoutMs = 600_000)
+        SafeFiles.deleteIfSymlink(dest)
+        val canonicalDest = dest.canonicalFile
+        require(canonicalDest.parentFile == AppPrefsPaths.cacheDir.canonicalFile) { "untrusted asset path" }
+        val connection = open(info.downloadUrl, timeoutMs = 600_000) { current, hop ->
+            if (hop == 0) requireTrustedDownloadUrl(current) else requireTrustedDownloadHost(current)
+        }
         try {
             val code = connection.responseCode
             if (code !in 200..299) error("HTTP $code downloading ${info.assetName}")
             val total = connection.contentLengthLong.takeIf { it > 0 }
+            if (total != null && total > MAX_DMG_BYTES) error("download too large")
             connection.inputStream.use { input ->
-                dest.outputStream().use { output ->
+                canonicalDest.outputStream().use { output ->
                     val buffer = ByteArray(64 * 1024)
                     var readTotal = 0L
                     while (true) {
                         if (cancelRequested.get()) error("cancelled")
                         val n = input.read(buffer)
                         if (n < 0) break
-                        output.write(buffer, 0, n)
                         readTotal += n
+                        if (readTotal > MAX_DMG_BYTES) {
+                            canonicalDest.delete()
+                            error("download too large")
+                        }
+                        output.write(buffer, 0, n)
                         onProgress(readTotal, total)
                     }
                 }
@@ -82,8 +93,8 @@ class AppUpdateService(
         } finally {
             connection.disconnect()
         }
-        verifySha256(dest, expectedSha)
-        dest
+        verifySha256(canonicalDest, expectedSha)
+        canonicalDest
     }
 
     private fun fetchCaskSha256(version: String, arch: String): String? {
@@ -102,7 +113,8 @@ class AppUpdateService(
      */
     fun applyAndRelaunch(dmg: File, targetApp: File = ZapretPaths.appBundle() ?: error(NOT_PACKAGED)): Result<Unit> =
         runCatching {
-            if (!targetApp.name.endsWith(".app") || !targetApp.isDirectory) error(NOT_PACKAGED)
+            if (!isZapretAppBundle(targetApp)) error(NOT_PACKAGED)
+            requireReplaceAppPath(targetApp.absolutePath)
             clearCancel()
             val mount = mountDmg(dmg)
             val staged: File
@@ -114,11 +126,19 @@ class AppUpdateService(
                 unmountDmg(mount)
             }
             if (cancelRequested.get()) {
-                staged.deleteRecursively()
+                SafeFiles.deleteTree(staged)
                 error("cancelled")
             }
-            val script = writeReplaceScript(staged = staged, targetApp = targetApp, pid = ProcessHandle.current().pid())
-            ProcessBuilder("/bin/bash", script.absolutePath)
+            requireAbsoluteAppPath(staged.absolutePath)
+            requireReplaceAppPath(targetApp.absolutePath)
+            val script = writeReplaceScript()
+            ProcessBuilder(
+                "/bin/bash",
+                script.absolutePath,
+                ProcessHandle.current().pid().toString(),
+                staged.absolutePath,
+                targetApp.absolutePath,
+            )
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
                 .start()
@@ -127,25 +147,73 @@ class AppUpdateService(
 
     private fun getText(url: String): String {
         requireTrustedApiUrl(url)
-        val connection = open(url, timeoutMs = 30_000)
+        val connection = open(
+            url,
+            timeoutMs = 30_000,
+            extraHeaders = mapOf("Accept" to "application/vnd.github+json"),
+        ) { current, _ -> requireTrustedApiUrl(current) }
         try {
-            connection.setRequestProperty("Accept", "application/vnd.github+json")
             val code = connection.responseCode
             if (code !in 200..299) error("HTTP $code from GitHub Releases")
-            return connection.inputStream.bufferedReader().use { it.readText() }
+            return readBounded(connection, MAX_API_BYTES)
         } finally {
             connection.disconnect()
         }
     }
 
-    private fun open(url: String, timeoutMs: Int): HttpURLConnection {
+    private fun open(
+        url: String,
+        timeoutMs: Int,
+        extraHeaders: Map<String, String> = emptyMap(),
+        trust: (String, Int) -> Unit,
+    ): HttpURLConnection {
+        var current = url
+        var hop = 0
+        while (true) {
+            if (hop > MAX_REDIRECTS) error("too many redirects")
+            trust(current, hop)
+            val connection = newConnection(current, timeoutMs, extraHeaders)
+            val code = connection.responseCode
+            if (code in 300..399) {
+                val location = connection.getHeaderField("Location") ?: error("redirect without Location")
+                connection.disconnect()
+                current = resolveRedirect(current, location)
+                hop++
+                continue
+            }
+            return connection
+        }
+    }
+
+    private fun newConnection(
+        url: String,
+        timeoutMs: Int,
+        extraHeaders: Map<String, String> = emptyMap(),
+    ): HttpURLConnection {
         val connection = URI.create(url).toURL().openConnection() as HttpURLConnection
-        connection.instanceFollowRedirects = true
+        connection.instanceFollowRedirects = false
         connection.connectTimeout = 15_000
         connection.readTimeout = timeoutMs
         connection.setRequestProperty("User-Agent", USER_AGENT)
+        extraHeaders.forEach { (name, value) -> connection.setRequestProperty(name, value) }
         connection.requestMethod = "GET"
         return connection
+    }
+
+    private fun readBounded(connection: HttpURLConnection, maxBytes: Long): String {
+        connection.inputStream.use { input ->
+            val out = ByteArrayOutputStream()
+            val buffer = ByteArray(16 * 1024)
+            var total = 0L
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                total += n
+                if (total > maxBytes) error("response too large")
+                out.write(buffer, 0, n)
+            }
+            return out.toString(Charsets.UTF_8)
+        }
     }
 
     private fun mountDmg(dmg: File): File {
@@ -165,36 +233,36 @@ class AppUpdateService(
         Shell.run("/usr/bin/hdiutil", "detach", mount.absolutePath, "-quiet", timeout = 30.seconds)
     }
 
-    private fun findZapretApp(mount: File): File? =
-        mount.walkTopDown().maxDepth(3).firstOrNull { it.name == "Zapret.app" && it.isDirectory }
+    private fun findZapretApp(mount: File): File? = locateZapretApp(mount)
 
     private fun stageAppCopy(sourceApp: File): File {
+        if (!isZapretAppBundle(sourceApp)) error("Zapret.app not found in DMG")
         val staged = File(AppPrefsPaths.cacheDir, "Zapret-update.app")
-        if (staged.exists()) staged.deleteRecursively()
-        Files.walk(sourceApp.toPath()).use { paths ->
-            paths.forEach { path ->
-                val rel = sourceApp.toPath().relativize(path)
-                val dest = staged.toPath().resolve(rel)
-                if (Files.isDirectory(path)) {
-                    Files.createDirectories(dest)
-                } else {
-                    Files.createDirectories(dest.parent)
-                    Files.copy(path, dest, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES)
-                }
-            }
-        }
+        SafeFiles.copyTree(sourceApp, staged)
         return staged
     }
 
-    private fun writeReplaceScript(staged: File, targetApp: File, pid: Long): File {
+    private fun writeReplaceScript(): File {
         val script = File(AppPrefsPaths.cacheDir, "replace-app.sh")
+        SafeFiles.deleteIfSymlink(script)
         script.writeText(
             """
             #!/bin/bash
             set -euo pipefail
-            PID=$pid
-            SRC="${staged.absolutePath}"
-            DST="${targetApp.absolutePath}"
+            PID="${'$'}1"
+            SRC="${'$'}2"
+            DST="${'$'}3"
+            case "${'$'}PID" in
+              ''|*[!0-9]*) exit 1 ;;
+            esac
+            case "${'$'}SRC" in
+              /*.app) ;;
+              *) exit 1 ;;
+            esac
+            case "${'$'}DST" in
+              /*.app) ;;
+              *) exit 1 ;;
+            esac
             for _ in ${'$'}(seq 1 60); do
               if ! kill -0 "${'$'}PID" 2>/dev/null; then
                 break
@@ -206,11 +274,11 @@ class AppUpdateService(
             rm -rf "${'$'}DST"
             /usr/bin/ditto "${'$'}SRC" "${'$'}DST"
             /usr/bin/xattr -cr "${'$'}DST"
-            /usr/bin/open "${'$'}DST"
+            /usr/bin/open -- "${'$'}DST"
             rm -rf "${'$'}SRC"
             """.trimIndent() + "\n",
         )
-        script.setExecutable(true)
+        SecureTemp.lockDown(script, executable = true)
         return script
     }
 
@@ -219,6 +287,9 @@ class AppUpdateService(
         const val RELEASES_LATEST =
             "https://api.github.com/repos/$TRUSTED_REPO/releases/latest"
         const val NOT_PACKAGED = "Обновление доступно только в установленном Zapret.app"
+        const val MAX_REDIRECTS = 5
+        const val MAX_API_BYTES = 2L * 1024 * 1024
+        const val MAX_DMG_BYTES = 512L * 1024 * 1024
         private const val USER_AGENT = "Zapret-macOS-control"
         private val HEX_SHA256 = Regex("^[a-fA-F0-9]{64}$")
         private val DMG_ASSET = Regex("""^Zapret-(\d+(?:\.\d+){0,2})(?:-(arm64|x86_64))?\.dmg$""")
@@ -237,20 +308,64 @@ class AppUpdateService(
             }
         }
 
-        fun requireTrustedDownloadUrl(url: String) {
+        fun requireTrustedDownloadHost(url: String) {
             val uri = URI.create(url)
             if (uri.scheme != "https") error("update URL must be https")
             val host = uri.host ?: error("invalid update URL")
-            val path = uri.path ?: ""
             val allowedHost = host == "github.com" || host == "objects.githubusercontent.com" ||
                 host.endsWith(".githubusercontent.com")
             if (!allowedHost) error("untrusted download host: $host")
-            if (host == "github.com" && !path.contains("/$TRUSTED_REPO/")) {
+        }
+
+        fun requireTrustedDownloadUrl(url: String) {
+            requireTrustedDownloadHost(url)
+            val uri = URI.create(url)
+            val path = uri.path ?: ""
+            if (uri.host == "github.com" && !path.contains("/$TRUSTED_REPO/")) {
                 error("untrusted download path")
             }
             if (!path.substringAfterLast('/').startsWith("Zapret-") || !path.endsWith(".dmg")) {
                 error("untrusted asset name")
             }
+        }
+
+        fun resolveRedirect(fromUrl: String, location: String): String {
+            if (location.isBlank()) error("redirect without Location")
+            val resolved = URI.create(fromUrl).resolve(location)
+            if (!resolved.isAbsolute) error("invalid redirect")
+            return resolved.toASCIIString()
+        }
+
+        fun requireAbsoluteAppPath(path: String) {
+            val file = File(path)
+            if (path != file.absolutePath) error("app path must be absolute")
+            if (path.any { it < ' ' || it == '"' || it == '$' || it == '`' }) error("unsafe app path")
+            if (!file.name.endsWith(".app")) error("path must be an .app bundle")
+        }
+
+        fun requireReplaceAppPath(path: String) {
+            requireAbsoluteAppPath(path)
+            if (File(path).name != "Zapret.app") error("target must be Zapret.app")
+        }
+
+        fun isZapretAppBundle(file: File): Boolean {
+            if (file.name != "Zapret.app") return false
+            if (SafeFiles.isSymlink(file)) return false
+            return Files.isDirectory(file.toPath(), LinkOption.NOFOLLOW_LINKS) &&
+                File(file, "Contents").isDirectory
+        }
+
+        fun locateZapretApp(mount: File): File? {
+            val direct = File(mount, "Zapret.app")
+            if (isZapretAppBundle(direct)) return direct
+            val children = mount.listFiles() ?: return null
+            for (child in children) {
+                if (SafeFiles.isSymlink(child)) continue
+                if (isZapretAppBundle(child)) return child
+                val nested = File(child, "Zapret.app")
+                if (isZapretAppBundle(nested)) return nested
+            }
+            return null
         }
 
         fun verifySha256(file: File, expected: String) {

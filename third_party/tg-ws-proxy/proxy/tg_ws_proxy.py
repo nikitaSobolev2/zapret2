@@ -496,22 +496,10 @@ async def _run(stop_event: Optional[asyncio.Event] = None):
         except (OSError, AttributeError):
             pass
 
-    link_host = get_link_host(proxy_config.host)
-    ftls = proxy_config.fake_tls_domain
-    dd_link = (f"tg://proxy?server={link_host}"
-               f"&port={proxy_config.port}"
-               f"&secret=dd{proxy_config.secret}")
-    ee_link = ""
-    if ftls:
-        domain_hex = ftls.encode('ascii').hex()
-        ee_link = (f"tg://proxy?server={link_host}"
-                   f"&port={proxy_config.port}"
-                   f"&secret=ee{proxy_config.secret}{domain_hex}")
-
     log.info("=" * 60)
     log.info("  Telegram MTProto WS Bridge Proxy")
     log.info("  Listening on   %s:%d", proxy_config.host, proxy_config.port)
-    log.info("  Secret:        %s", proxy_config.secret)
+    ftls = proxy_config.fake_tls_domain
     if ftls:
         log.info("  Fake TLS:      %s", ftls)
     log.info("  Target DC IPs:")
@@ -524,12 +512,6 @@ async def _run(stop_event: Optional[asyncio.Event] = None):
     if proxy_config.cfproxy_worker_domains:
         log.info("  CF worker:     enabled (%s)",
                  ", ".join(proxy_config.cfproxy_worker_domains))
-    log.info("=" * 60)
-    log.info("  Connect:")
-    if ftls:
-        log.info("    %s", ee_link)
-    else:
-        log.info("    %s", dd_link)
     log.info("=" * 60)
 
     async def log_stats():
@@ -630,6 +612,23 @@ def run_proxy(stop_event: Optional[asyncio.Event] = None):
     asyncio.run(_run(stop_event,))
 
 
+SECRET_ENV = 'TG_WS_PROXY_SECRET'
+
+
+def resolve_secret(cli_secret: Optional[str], environ: Optional[dict] = None) -> str:
+    env = os.environ if environ is None else environ
+    raw = (cli_secret or env.get(SECRET_ENV) or '').strip()
+    if not raw:
+        return os.urandom(16).hex()
+    if len(raw) != 32:
+        raise ValueError('Secret must be exactly 32 hex characters')
+    try:
+        bytes.fromhex(raw)
+    except ValueError as exc:
+        raise ValueError('Secret must be valid hex') from exc
+    return raw
+
+
 def main():
     ap = argparse.ArgumentParser(
         description='Telegram MTProto WebSocket Bridge Proxy')
@@ -639,7 +638,8 @@ def main():
                     help='Listen host (default 127.0.0.1)')
     ap.add_argument('--secret', type=str, default=None,
                     help='MTProto proxy secret (32 hex chars). '
-                         'Auto-generated if not provided.')
+                         'Prefer the TG_WS_PROXY_SECRET env var so ps cannot '
+                         'read it. Auto-generated if neither is set.')
     ap.add_argument('--dc-ip', metavar='DC:IP', action='append',
                     help='Target IP for a DC, e.g. --dc-ip 2:149.154.167.220')
     ap.add_argument('-v', '--verbose', action='store_true',
@@ -689,19 +689,11 @@ def main():
         log.error(str(e))
         sys.exit(1)
 
-    if args.secret:
-        secret_hex = args.secret.strip()
-        if len(secret_hex) != 32:
-            log.error("Secret must be exactly 32 hex characters")
-            sys.exit(1)
-        try:
-            bytes.fromhex(secret_hex)
-        except ValueError:
-            log.error("Secret must be valid hex")
-            sys.exit(1)
-    else:
-        secret_hex = os.urandom(16).hex()
-        log.info("Generated secret: %s", secret_hex)
+    try:
+        secret_hex = resolve_secret(args.secret)
+    except ValueError as e:
+        log.error(str(e))
+        sys.exit(1)
 
     proxy_config.port = args.port
     proxy_config.host = args.host

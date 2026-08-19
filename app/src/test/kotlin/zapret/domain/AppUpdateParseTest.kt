@@ -180,4 +180,63 @@ class AppUpdateParseTest {
         )
         assertNull(AppUpdateService.parseCaskSha256(cask, "9.9.9", "arm64"))
     }
+
+    @Test
+    fun resolveRedirectJoinsRelativeLocation() {
+        assertEquals(
+            "https://github.com/github-production-release-asset/Zapret-1.0.0.dmg",
+            AppUpdateService.resolveRedirect(
+                "https://github.com/nikitaSobolev2/zapret2/releases/download/v1.0.0/Zapret-1.0.0.dmg",
+                "/github-production-release-asset/Zapret-1.0.0.dmg",
+            ),
+        )
+        assertEquals(
+            "https://objects.githubusercontent.com/github-production-release-asset/abc",
+            AppUpdateService.resolveRedirect(
+                "https://github.com/nikitaSobolev2/zapret2/releases/download/v1.0.0/Zapret-1.0.0.dmg",
+                "https://objects.githubusercontent.com/github-production-release-asset/abc",
+            ),
+        )
+    }
+
+    @Test
+    fun downloadHopAllowsCdnWithoutDmgName() {
+        AppUpdateService.requireTrustedDownloadHost(
+            "https://objects.githubusercontent.com/github-production-release-asset/abc?X-Amz-Algorithm=AWS4",
+        )
+        assertFails {
+            AppUpdateService.requireTrustedDownloadUrl(
+                "https://objects.githubusercontent.com/github-production-release-asset/abc",
+            )
+        }
+        assertFails {
+            AppUpdateService.requireTrustedDownloadHost("https://evil.example/Zapret-1.0.0.dmg")
+        }
+    }
+
+    @Test
+    fun requireReplaceAppPathRejectsUnsafeTargets() {
+        AppUpdateService.requireReplaceAppPath("/Applications/Zapret.app")
+        assertFails { AppUpdateService.requireReplaceAppPath("/Applications/Other.app") }
+        assertFails { AppUpdateService.requireReplaceAppPath("Zapret.app") }
+        assertFails { AppUpdateService.requireReplaceAppPath("/tmp/Zapret.app\n") }
+    }
+
+    @Test
+    fun locateZapretAppIgnoresApplicationsSymlink() {
+        val root = File.createTempFile("zapret-dmg", "").apply {
+            delete()
+            mkdirs()
+            deleteOnExit()
+        }
+        val victim = File(root, "Applications-target").apply { mkdirs() }
+        val decoy = File(victim, "Zapret.app").apply { mkdirs() }
+        File(decoy, "Contents").mkdirs()
+        val mount = File(root, "mount").apply { mkdirs() }
+        java.nio.file.Files.createSymbolicLink(File(mount, "Applications").toPath(), victim.toPath())
+        assertNull(AppUpdateService.locateZapretApp(mount))
+        val real = File(mount, "Zapret.app").apply { mkdirs() }
+        File(real, "Contents").mkdirs()
+        assertEquals(real.canonicalFile, AppUpdateService.locateZapretApp(mount)?.canonicalFile)
+    }
 }

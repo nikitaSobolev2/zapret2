@@ -8,13 +8,14 @@ data class AppPrefs(
 
 object AppPrefsPaths {
     private val supportRoot: File
-        get() = File(
-            System.getProperty("user.home"),
-            "Library/Application Support/Zapret",
-        ).also { it.mkdirs() }
+        get() = SafeFiles.privateDirectory(
+            File(System.getProperty("user.home"), "Library/Application Support/Zapret"),
+        )
 
     val prefsFile: File get() = File(supportRoot, "app-prefs.json")
-    val cacheDir: File get() = File(System.getProperty("user.home"), "Library/Caches/Zapret").also { it.mkdirs() }
+    val cacheDir: File get() = SafeFiles.privateDirectory(
+        File(System.getProperty("user.home"), "Library/Caches/Zapret"),
+    )
 }
 
 /** User-level Zapret.app preferences (not `/opt/zapret2/config`). */
@@ -32,8 +33,10 @@ class AppPrefsStore(
     }
 
     fun write(prefs: AppPrefs) {
-        file.parentFile?.mkdirs()
+        file.parentFile?.let { SafeFiles.privateDirectory(it) }
+        SafeFiles.deleteIfSymlink(file)
         file.writeText(encode(prefs))
+        SecureTemp.lockDown(file)
     }
 
     companion object {

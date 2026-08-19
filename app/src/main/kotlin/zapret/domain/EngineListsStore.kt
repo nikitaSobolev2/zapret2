@@ -11,13 +11,13 @@ class EngineListsStore(
 ) {
 
     fun ensureSeeded() {
-        listsDir.mkdirs()
+        prepareListsDir()
         val defaults = defaultsDir()
         for (name in LIST_FILES) {
-            val target = File(listsDir, name)
+            val target = regularFile(name)
             if (target.isFile) continue
             val source = defaults?.let { File(it, name) }
-            if (source != null && source.isFile) {
+            if (source != null && source.isFile && !SafeFiles.isSymlink(source)) {
                 source.copyTo(target, overwrite = false)
             } else {
                 target.writeText("")
@@ -27,7 +27,7 @@ class EngineListsStore(
     }
 
     fun ensureStrategyDefaults() {
-        ZapretPaths.userDataRoot.mkdirs()
+        SafeFiles.privateDirectory(ZapretPaths.userDataRoot)
         if (!ZapretPaths.selectedStrategyFile.isFile) {
             ZapretPaths.selectedStrategyFile.writeText(ZapretConfig.DEFAULT_STRATEGY + "\n")
         }
@@ -59,7 +59,7 @@ class EngineListsStore(
 
     fun writeConfig(config: ZapretConfig) {
         require(StrategyCatalog.isValidId(config.strategyId)) { "invalid strategy" }
-        ZapretPaths.userDataRoot.mkdirs()
+        SafeFiles.privateDirectory(ZapretPaths.userDataRoot)
         ZapretPaths.selectedStrategyFile.writeText(config.strategyId.trim() + "\n")
         ZapretPaths.ipsetModeFile.writeText(config.ipsetMode.value + "\n")
         discordUdpFile.writeText(if (config.discordUdp) "1\n" else "0\n")
@@ -72,41 +72,34 @@ class EngineListsStore(
     private val blockQuicFile: File
         get() = File(ZapretPaths.userDataRoot, "block-quic")
 
-    fun fileFor(name: String): File {
-        require(name in LIST_FILES) { "unknown list: $name" }
-        return File(listsDir, name)
-    }
+    fun fileFor(name: String): File = regularFile(name)
 
     fun tooLargeForEditor(name: String): Boolean {
-        require(name in LIST_FILES) { "unknown list: $name" }
-        val file = File(listsDir, name)
+        val file = regularFile(name)
         return file.isFile && file.length() > EDITOR_MAX_BYTES
     }
 
     fun readList(name: String): String {
-        require(name in LIST_FILES) { "unknown list: $name" }
         ensureSeeded()
-        return File(listsDir, name).takeIf { it.isFile }?.readText().orEmpty()
+        return regularFile(name).takeIf { it.isFile }?.readText().orEmpty()
     }
 
     fun writeList(name: String, text: String) {
-        require(name in LIST_FILES) { "unknown list: $name" }
-        listsDir.mkdirs()
+        prepareListsDir()
         val normalized = if (name.startsWith("ipset-")) {
             HostListText.normalizeIpset(text)
         } else {
             HostListText.normalizeHosts(text)
         }
-        File(listsDir, name).writeText(normalized)
+        regularFile(name).writeText(normalized)
     }
 
     fun resetList(name: String) {
-        require(name in LIST_FILES) { "unknown list: $name" }
         val defaults = defaultsDir()
         val source = defaults?.let { File(it, name) }
-        listsDir.mkdirs()
-        val target = File(listsDir, name)
-        if (source != null && source.isFile) {
+        prepareListsDir()
+        val target = regularFile(name)
+        if (source != null && source.isFile && !SafeFiles.isSymlink(source)) {
             source.copyTo(target, overwrite = true)
         } else {
             target.writeText("")
@@ -115,6 +108,18 @@ class EngineListsStore(
 
     fun resetAll() {
         for (name in LIST_FILES) resetList(name)
+    }
+
+    private fun prepareListsDir() {
+        SafeFiles.deleteIfSymlink(listsDir)
+        listsDir.mkdirs()
+    }
+
+    private fun regularFile(name: String): File {
+        require(name in LIST_FILES) { "unknown list: $name" }
+        val file = File(listsDir, name)
+        SafeFiles.deleteIfSymlink(file)
+        return file
     }
 
     companion object {
@@ -128,7 +133,14 @@ class EngineListsStore(
             oversized: Set<String>,
             replaceOversized: Set<String> = emptySet(),
         ): Map<String, String> =
-            drafts.filterKeys { it in LIST_FILES && (it !in oversized || it in replaceOversized) }
+            drafts.filter { (name, text) ->
+                name in LIST_FILES && when {
+                    name !in oversized -> true
+                    name !in replaceOversized -> false
+                    text.isBlank() -> false
+                    else -> true
+                }
+            }
 
         val LIST_FILES = listOf(
             "list-general.txt",

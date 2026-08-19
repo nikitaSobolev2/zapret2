@@ -17,9 +17,11 @@ object ZapretPaths {
     val uninstallScript = File(systemRoot, "uninstall.sh")
 
     val userDataRoot: File
-        get() = File(
-            System.getProperty("user.home"),
-            "Library/Application Support/Zapret",
+        get() = SafeFiles.privateDirectory(
+            File(
+                System.getProperty("user.home"),
+                "Library/Application Support/Zapret",
+            ),
         )
 
     val selectedStrategyFile: File get() = File(userDataRoot, "selected-strategy")

@@ -30,7 +30,6 @@ data class TgWsProxyConfig(
         val args = mutableListOf(
             "--host", host.trim(),
             "--port", port.trim(),
-            "--secret", secret.trim(),
             "--buf-kb", bufKb.trim(),
             "--pool-size", poolSize.trim(),
         )
@@ -48,7 +47,11 @@ data class TgWsProxyConfig(
         return args
     }
 
+    fun secretEnvironment(): Map<String, String> =
+        mapOf(SECRET_ENV to secret.trim())
+
     companion object {
+        const val SECRET_ENV = "TG_WS_PROXY_SECRET"
         fun newSecret(): String {
             val bytes = ByteArray(16)
             SecureRandom().nextBytes(bytes)

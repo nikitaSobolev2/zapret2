@@ -514,8 +514,9 @@ jobs:
           set -euo pipefail
           notes="${GITHUB_WORKSPACE}/release-notes.md"
           tag="${GITHUB_REF_NAME}"
-          # Annotated tag message (`git tag -a -m`) wins; lightweight tags fall back to commits.
-          tag_msg="$(git for-each-ref --format='%(contents)' "refs/tags/${tag}" | sed 's/[[:space:]]*$//')"
+          # Annotated tag message wins; skip GPG signature blob (`%(contents)` includes it).
+          tag_msg="$(git for-each-ref --format='%(contents:subject)%0a%(contents:body)' "refs/tags/${tag}")"
+          tag_msg="$(printf '%s' "${tag_msg}" | sed 's/[[:space:]]*$//')"
           if [ -n "${tag_msg}" ]; then
             printf '%s\n' "${tag_msg}" > "${notes}"
             exit 0

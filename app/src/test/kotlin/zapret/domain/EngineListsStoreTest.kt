@@ -88,8 +88,16 @@ class EngineListsStoreTest {
             EngineListsStore.applyListDrafts(drafts, setOf("ipset-all.txt")).keys,
         )
         assertEquals(
-            setOf("list-general.txt", "ipset-all.txt"),
+            setOf("list-general.txt"),
             EngineListsStore.applyListDrafts(drafts, setOf("ipset-all.txt"), setOf("ipset-all.txt")).keys,
+        )
+        assertEquals(
+            setOf("list-general.txt", "ipset-all.txt"),
+            EngineListsStore.applyListDrafts(
+                mapOf("list-general.txt" to "a.example\n", "ipset-all.txt" to "1.2.3.4\n"),
+                setOf("ipset-all.txt"),
+                setOf("ipset-all.txt"),
+            ).keys,
         )
     }
 
@@ -106,6 +114,24 @@ class EngineListsStoreTest {
         File(listsDir, "ipset-all.txt").writeBytes(ByteArray(EngineListsStore.EDITOR_MAX_BYTES.toInt() + 1))
         assertTrue(store.tooLargeForEditor("ipset-all.txt"))
         assertTrue(!store.tooLargeForEditor("list-general.txt"))
+    }
+
+    @Test
+    fun writeListReplacesSymlinkInsteadOfWritingThroughIt() {
+        val root = File.createTempFile("zapret-lists", "").apply {
+            delete()
+            mkdirs()
+            deleteOnExit()
+        }
+        val listsDir = File(root, "lists").apply { mkdirs() }
+        val victim = File(root, "victim.txt").apply { writeText("KEEP\n") }
+        val link = File(listsDir, "list-general.txt")
+        java.nio.file.Files.createSymbolicLink(link.toPath(), victim.toPath())
+        val store = EngineListsStore(listsDir = listsDir, defaultsDir = { null })
+        store.writeList("list-general.txt", "ok.example\n")
+        assertEquals("KEEP\n", victim.readText())
+        assertTrue(!java.nio.file.Files.isSymbolicLink(link.toPath()))
+        assertEquals("ok.example\n", store.readList("list-general.txt"))
     }
 
     @Test

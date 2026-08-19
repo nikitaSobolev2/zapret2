@@ -18,8 +18,10 @@ class TgWsProxyStore(
 
     fun write(config: TgWsProxyConfig) {
         TgWsProxyValidation.requireValid(config)
-        file.parentFile?.mkdirs()
+        file.parentFile?.let { SafeFiles.privateDirectory(it) }
+        SafeFiles.deleteIfSymlink(file)
         file.writeText(encode(config))
+        SecureTemp.lockDown(file)
     }
 
     companion object {

@@ -22,6 +22,7 @@ class TgWsProxyService : TgWsProxyControl {
             .redirectOutput(ProcessBuilder.Redirect.appendTo(TgWsProxyPaths.logFile))
         launch.workDir?.let { builder.directory(it) }
         builder.environment().putAll(launch.env)
+        builder.environment().putAll(config.secretEnvironment())
 
         return try {
             val process = builder.start()

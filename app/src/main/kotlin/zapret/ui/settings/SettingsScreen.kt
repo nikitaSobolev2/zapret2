@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import zapret.domain.DesktopOpen
 import zapret.domain.EngineListsStore
 import zapret.domain.IpsetMode
 import zapret.domain.StrategyEntry
@@ -166,7 +167,7 @@ fun SettingsScreen(
                         color = Palette.text,
                     )
                     Text(
-                        text = "Откройте во внешнем редакторе. «Применить» этот файл не перезапишет.",
+                        text = "Откройте во внешнем редакторе. «Применить» этот файл не перезапишет. Пустая замена тоже не сотрёт файл на диске.",
                         style = MaterialTheme.typography.labelSmall,
                         color = Palette.textMuted,
                     )
@@ -390,7 +391,4 @@ private fun openInTelegram(url: String) {
     if (!openUrl(url)) copyToClipboard(url)
 }
 
-private fun openUrl(url: String): Boolean =
-    runCatching {
-        ProcessBuilder("/usr/bin/open", url).redirectErrorStream(true).start().waitFor() == 0
-    }.getOrDefault(false)
+private fun openUrl(url: String): Boolean = DesktopOpen.url(url)

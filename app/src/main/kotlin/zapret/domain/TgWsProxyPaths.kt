@@ -1,15 +1,19 @@
 package zapret.domain
 
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
 
 /** User-level layout for the bundled TG WS Proxy sidecar (no root / LaunchDaemon). */
 object TgWsProxyPaths {
 
     private val supportRoot: File
-        get() = File(
-            System.getProperty("user.home"),
-            "Library/Application Support/Zapret/tg-ws-proxy",
-        ).also { it.mkdirs() }
+        get() = SafeFiles.privateDirectory(
+            File(
+                System.getProperty("user.home"),
+                "Library/Application Support/Zapret/tg-ws-proxy",
+            ),
+        )
 
     val configFile: File get() = File(supportRoot, "config.json")
     val pidFile: File get() = File(supportRoot, "proxy.pid")
@@ -20,7 +24,11 @@ object TgWsProxyPaths {
         val resources = System.getProperty("compose.application.resources.dir")?.let(::File) ?: return null
         val dir = File(resources, "tg-ws-proxy")
         val candidate = File(dir, "tg-ws-proxy")
-        if (!candidate.isFile || !File(dir, "_internal").isDirectory) return null
+        val internal = File(dir, "_internal")
+        if (!candidate.isFile || SafeFiles.isSymlink(candidate)) return null
+        if (SafeFiles.isSymlink(internal) || !Files.isDirectory(internal.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            return null
+        }
         restoreExecuteBits(dir)
         if (!candidate.canExecute()) {
             candidate.setExecutable(true, false)
@@ -37,13 +45,18 @@ object TgWsProxyPaths {
     }
 
     private fun restoreExecuteBits(dir: File) {
-        dir.walkTopDown().forEach { file ->
-            if (!file.isFile) return@forEach
-            val name = file.name
-            if (name == "tg-ws-proxy" || name == "Python" ||
-                name.endsWith(".so") || name.endsWith(".dylib")
-            ) {
-                file.setExecutable(true, false)
+        Files.walk(dir.toPath()).use { stream ->
+            stream.forEach { path ->
+                if (Files.isSymbolicLink(path) || !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+                    return@forEach
+                }
+                val file = path.toFile()
+                val name = file.name
+                if (name == "tg-ws-proxy" || name == "Python" ||
+                    name.endsWith(".so") || name.endsWith(".dylib")
+                ) {
+                    file.setExecutable(true, false)
+                }
             }
         }
     }

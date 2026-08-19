@@ -2,6 +2,7 @@ package zapret.domain
 
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
@@ -19,7 +20,7 @@ object EnginePrivileged {
     ): CommandResult {
         val stage = Files.createTempDirectory("zapret-engine-").toFile()
         return try {
-            payload.copyRecursively(stage, overwrite = true)
+            SafeFiles.copyTree(payload, stage)
             markExecutables(stage)
             val install = File(stage, "install.sh")
             if (!install.isFile) return CommandResult(1, "install.sh missing in staged payload")
@@ -29,7 +30,7 @@ object EnginePrivileged {
                 timeout = timeout,
             )
         } finally {
-            stage.deleteRecursively()
+            SafeFiles.deleteTree(stage)
         }
     }
 
@@ -40,24 +41,24 @@ object EnginePrivileged {
         timeout: Duration = 3.minutes,
     ): CommandResult {
         if (!scriptFile.isFile) return CommandResult(1, "script not found: ${scriptFile.name}")
-        // System install path is already root-owned; /tmp copy still works and is safer.
         return privileges.runScript(scriptFile.readText(), args = args, timeout = timeout)
     }
 
     private fun markExecutables(root: File) {
-        // Avoid rsync -a copying a 0700 temp dir into /Library (breaks droproot reads).
-        root.setExecutable(true, false)
-        root.setReadable(true, false)
-        root.walkTopDown().forEach { file ->
-            if (file.isDirectory) {
-                file.setExecutable(true, false)
+        Files.walk(root.toPath()).use { stream ->
+            stream.forEach { entry ->
+                if (Files.isSymbolicLink(entry)) return@forEach
+                val file = entry.toFile()
+                if (Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS)) {
+                    file.setExecutable(true, false)
+                    file.setReadable(true, false)
+                    return@forEach
+                }
                 file.setReadable(true, false)
-                return@forEach
-            }
-            file.setReadable(true, false)
-            val name = file.name
-            if (name.endsWith(".sh") || name == "utunws") {
-                file.setExecutable(true, false)
+                val name = file.name
+                if (name.endsWith(".sh") || name == "utunws") {
+                    file.setExecutable(true, false)
+                }
             }
         }
     }

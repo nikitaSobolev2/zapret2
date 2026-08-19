@@ -16,6 +16,7 @@ import zapret.domain.AppVersion
 import zapret.domain.CombinedStatus
 import zapret.domain.CommandResult
 import zapret.domain.ConfigWriter
+import zapret.domain.DesktopOpen
 import zapret.domain.EngineListsStore
 import zapret.domain.InstallService
 import zapret.domain.PasswordlessControl
@@ -163,10 +164,12 @@ class AppViewModel(private val scope: CoroutineScope) {
 
     fun openListFile(name: String) {
         if (name !in EngineListsStore.LIST_FILES) return
-        runCatching { listsStore.ensureSeeded() }
-        val file = listsStore.fileFor(name)
-        if (!file.isFile) return
-        ProcessBuilder("/usr/bin/open", "-t", file.absolutePath).start()
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                listsStore.ensureSeeded()
+                DesktopOpen.textFile(listsStore.fileFor(name))
+            }
+        }
     }
 
     fun restartTgProxy() = operation("Перезапуск TG proxy") {
