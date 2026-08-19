@@ -506,6 +506,31 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: ${{ env.repo_dir }}
+          fetch-depth: 0
+
+      - name: Write release notes
+        working-directory: ${{ env.repo_dir }}
+        run: |
+          set -euo pipefail
+          notes="${GITHUB_WORKSPACE}/release-notes.md"
+          tag="${GITHUB_REF_NAME}"
+          # Annotated tag message (`git tag -a -m`) wins; lightweight tags fall back to commits.
+          tag_msg="$(git for-each-ref --format='%(contents)' "refs/tags/${tag}" | sed 's/[[:space:]]*$//')"
+          if [ -n "${tag_msg}" ]; then
+            printf '%s\n' "${tag_msg}" > "${notes}"
+            exit 0
+          fi
+          prev="$(git tag --list 'v[0-9]*' --sort=-v:refname | awk -v cur="${tag}" '$0 != cur { print; exit }')"
+          {
+            echo "### ${tag}"
+            echo
+            if [ -n "${prev}" ]; then
+              git log --no-merges --pretty=format:'- %s' "${prev}..${tag}"
+            else
+              git log --no-merges --pretty=format:'- %s' --max-count=50 "${tag}"
+            fi
+            echo
+          } > "${notes}"
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -610,16 +635,8 @@ jobs:
           fail_on_unmatched_files: true
           prerelease: false
           draft: false
-          # macOS DMG is attached by workflow macos-app.yml to this same tag.
-          body: |
-            ### zapret2 ${{ github.ref_name }}
-
-            Source / binary bundles below. The macOS app DMGs (`Zapret-*-arm64.dmg` and
-            `Zapret-*-x86_64.dmg`) are uploaded by the separate `macOS app` workflow onto
-            this same release when that build succeeds.
-
-            Homebrew cask tracks `vX.Y.Z` assets:
-            `https://github.com/nikitaSobolev2/zapret2/releases/download/${{ github.ref_name }}/Zapret-*-arm64.dmg`
+          generate_release_notes: false
+          body_path: release-notes.md
           files: |
             zapret2*.tar.gz
             zapret2*.zip

@@ -147,23 +147,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: zapret2 ${{ github.ref_name }}
           files: dist/*.dmg
           fail_on_unmatched_files: true
-          append_body: true
-          body: |
-
-            ### Zapret macOS ${{ steps.ver.outputs.version }}
-
-            Apple Silicon: https://github.com/nikitaSobolev2/zapret2/releases/download/${{ github.ref_name }}/Zapret-${{ steps.ver.outputs.version }}-arm64.dmg
-
-            Intel: https://github.com/nikitaSobolev2/zapret2/releases/download/${{ github.ref_name }}/Zapret-${{ steps.ver.outputs.version }}-x86_64.dmg
-
-            ```
-            brew tap nikitaSobolev2/zapret2 https://github.com/nikitaSobolev2/zapret2
-            brew install --cask zapret
-            brew upgrade --cask zapret
-            ```
+          generate_release_notes: false
 
       - name: Update Homebrew cask
         env:
