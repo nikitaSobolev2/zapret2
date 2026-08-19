@@ -197,6 +197,11 @@ class AppViewModel(private val scope: CoroutineScope) {
                 prefsStore.write(prefsStore.read().copy(passwordless = enabled))
                 return@operation CommandResult(0, "saved")
             }
+            val have = passwordless.isEnabled()
+            if (enabled == have) {
+                prefsStore.write(prefsStore.read().copy(passwordless = enabled))
+                return@operation CommandResult(0, "saved")
+            }
             val result = if (enabled) passwordless.enable() else passwordless.disable()
             if (result.ok) {
                 prefsStore.write(prefsStore.read().copy(passwordless = enabled))
@@ -465,10 +470,10 @@ class AppViewModel(private val scope: CoroutineScope) {
             defaultListContents = defaultListContents,
             oversizedLists = oversizedLists,
             tgConfig = runCatching { tgStore.read() }.getOrDefault(state.tgConfig),
-            passwordless = passwordlessSetting(ZapretPaths.isInstalled, passwordlessOn, prefs),
+            passwordless = prefs.passwordless,
             autoUpdate = prefs.autoUpdate,
             appVersion = AppVersion.current(),
-            prerequisites = Prerequisites.probe(passwordlessOn),
+            prerequisites = Prerequisites.probe(passwordlessOn, prefs.passwordless),
         )
     }
 
@@ -476,13 +481,10 @@ class AppViewModel(private val scope: CoroutineScope) {
         val passwordlessOn = runCatching { passwordless.isEnabled() }.getOrDefault(false)
         val prefs = runCatching { prefsStore.read() }.getOrDefault(AppPrefs())
         state = state.copy(
-            passwordless = passwordlessSetting(ZapretPaths.isInstalled, passwordlessOn, prefs),
-            prerequisites = Prerequisites.probe(passwordlessOn),
+            passwordless = prefs.passwordless,
+            prerequisites = Prerequisites.probe(passwordlessOn, prefs.passwordless),
         )
     }
-
-    private fun passwordlessSetting(installed: Boolean, enabledOnSystem: Boolean, prefs: AppPrefs): Boolean =
-        if (installed) enabledOnSystem else prefs.passwordless
 
     private fun finishProbe(generation: Int, outcome: Result<StrategyProbeReport>) {
         if (generation != probeGeneration) return

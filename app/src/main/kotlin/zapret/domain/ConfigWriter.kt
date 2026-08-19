@@ -25,8 +25,6 @@ class ConfigWriter(
         if (!restart.canExecute()) {
             return service.start()
         }
-        val sudo = Shell.run("/usr/bin/sudo", "-n", restart.absolutePath)
-        if (sudo.ok || !sudo.output.contains("a password is required")) return sudo
-        return EnginePrivileged.runScriptText(privileges, restart)
+        return service.restart()
     }
 }

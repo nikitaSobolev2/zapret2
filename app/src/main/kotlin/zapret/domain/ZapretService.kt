@@ -16,6 +16,7 @@ data class DaemonStatus(
 class ZapretService(
     private val privileges: PrivilegeRunner,
     private val lists: EngineListsStore = EngineListsStore(),
+    private val passwordless: PasswordlessControl = PasswordlessControl(privileges),
 ) : ZapretControl {
 
     override fun start(): CommandResult {
@@ -70,7 +71,13 @@ class ZapretService(
     private fun runInstalled(script: java.io.File): CommandResult {
         val sudo = Shell.run("/usr/bin/sudo", "-n", script.absolutePath, timeout = INIT_TIMEOUT)
         if (sudo.ok || !sudo.needsPassword()) return sudo
-        return EnginePrivileged.runScriptText(privileges, script, timeout = INIT_TIMEOUT)
+        val wantSudoers = runCatching { AppPrefsStore().read().passwordless }.getOrDefault(true) &&
+            !passwordless.isEnabled()
+        return passwordless.runEngineThenMaybeSudoers(
+            engineScript = script,
+            installSudoers = wantSudoers,
+            timeout = INIT_TIMEOUT,
+        )
     }
 
     private fun CommandResult.needsPassword(): Boolean =

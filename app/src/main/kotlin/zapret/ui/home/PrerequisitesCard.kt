@@ -66,8 +66,8 @@ fun PrerequisitesCard(
             )
             CheckLine(
                 label = "Вкл/выкл без пароля",
-                ok = prerequisites.passwordlessControl,
-                detail = if (prerequisites.passwordlessControl) "sudoers" else "включится при установке",
+                ok = prerequisites.passwordlessReady,
+                detail = prerequisites.passwordlessDetail(),
             )
 
             if (!prerequisites.hasPrebuiltBinary && !prerequisites.hasCompiler) {

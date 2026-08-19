@@ -104,6 +104,33 @@ class ShellConfigTextTest {
     }
 
     @Test
+    fun accountNameUsesHomeFolderNotUserProp() {
+        assertEquals("jane", ConfigValidation.accountName(home = "/Users/jane", userName = "other"))
+        assertEquals("bob", ConfigValidation.accountName(home = "/", userName = "bob"))
+        assertEquals("bob", ConfigValidation.accountName(home = null, userName = "bob"))
+    }
+
+    @Test
+    fun passwordlessCardCopyFollowsWantedAndInstalled() {
+        val wantedOff = Prerequisites(
+            hasCompiler = true,
+            hasSources = true,
+            hasPrebuiltBinary = true,
+            passwordlessControl = false,
+            passwordlessWanted = false,
+            wanInterface = "en0",
+            zapretInstalled = true,
+        )
+        assertEquals(true, wantedOff.passwordlessReady)
+        assertEquals("выкл · Настройки", wantedOff.passwordlessDetail())
+        val pending = wantedOff.copy(passwordlessWanted = true, zapretInstalled = true)
+        assertEquals(false, pending.passwordlessReady)
+        assertEquals("включится при следующем пароле администратора", pending.passwordlessDetail())
+        val fresh = pending.copy(zapretInstalled = false)
+        assertEquals("включится при установке", fresh.passwordlessDetail())
+    }
+
+    @Test
     fun prerequisitesReadyWhenInstalledWithWan() {
         val ready = Prerequisites(
             hasCompiler = true,

@@ -15,8 +15,8 @@ stop="/Library/Application Support/Zapret/stop.sh"
 restart="/Library/Application Support/Zapret/restart.sh"
 sudoers=/etc/sudoers.d/zapret
 
-tmp="$(mktemp)"
 umask 337
+tmp="$(mktemp)"
 stop_esc="$(printf '%s' "$stop" | sed 's/ /\\ /g')"
 restart_esc="$(printf '%s' "$restart" | sed 's/ /\\ /g')"
 printf '%s ALL=(root) NOPASSWD: %s, %s\n' "$user" "$stop_esc" "$restart_esc" >"$tmp"

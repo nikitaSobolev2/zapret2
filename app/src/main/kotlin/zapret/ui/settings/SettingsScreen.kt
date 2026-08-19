@@ -279,7 +279,7 @@ fun SettingsScreen(
                     label = "Вкл/выкл без пароля",
                     checked = state.passwordless,
                     onChange = onPasswordless,
-                    description = "sudo для stop/restart",
+                    description = "По умолчанию вкл. Stop/start без sudo. На уже установленном движке — при следующем пароле администратора.",
                 )
                 TextAction(
                     text = if (systemAdvanced) "Скрыть обновления" else "Обновления · v${state.appVersion}",

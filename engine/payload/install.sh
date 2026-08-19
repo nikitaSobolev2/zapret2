@@ -57,7 +57,23 @@ migrate_legacy_tpws
 # Temp staging dirs are often 0700; after droproot utunws must traverse BASE to read lists/bins.
 /usr/bin/find "$DEST" -type d -exec /bin/chmod 755 {} +
 /usr/bin/find "$DEST" -type f -exec /bin/chmod 644 {} +
-/bin/chmod 755 "$DEST/install.sh" "$DEST/run.sh" "$DEST/restart.sh" "$DEST/stop.sh" "$DEST/watchdog.sh" "$DEST/uninstall.sh" "$DEST/install-sudoers.sh" "$DEST/bin/utunws"
+/bin/chmod 755 "$DEST/install.sh" "$DEST/run.sh" "$DEST/restart.sh" "$DEST/stop.sh" "$DEST/watchdog.sh" "$DEST/uninstall.sh" "$DEST/bin/utunws"
+if [ -f "$DEST/install-sudoers.sh" ]; then
+    /bin/chmod 755 "$DEST/install-sudoers.sh"
+fi
+
+user_name="${DATA_ROOT#/Users/}"
+user_name="${user_name%%/*}"
+if [ "$WANT_NOPASSWD" = 1 ]; then
+    if [ ! -x "$DEST/install-sudoers.sh" ]; then
+        echo "zapret: install-sudoers.sh missing" >&2
+        exit 1
+    fi
+    "$DEST/install-sudoers.sh" "$user_name"
+else
+    /bin/rm -f /etc/sudoers.d/zapret /etc/sudoers.d/zapret2
+fi
+
 DATA_ROOT="$DATA_ROOT" /usr/bin/awk '
 BEGIN { r = ENVIRON["DATA_ROOT"] }
 {
@@ -90,11 +106,3 @@ while ! /sbin/ifconfig utun50 >/dev/null 2>&1; do
     fi
     sleep 0.1
 done
-
-user_name="${DATA_ROOT#/Users/}"
-user_name="${user_name%%/*}"
-if [ "$WANT_NOPASSWD" = 1 ]; then
-    "$DEST/install-sudoers.sh" "$user_name" || echo "zapret: passwordless sudoers skipped" >&2
-else
-    /bin/rm -f /etc/sudoers.d/zapret /etc/sudoers.d/zapret2
-fi

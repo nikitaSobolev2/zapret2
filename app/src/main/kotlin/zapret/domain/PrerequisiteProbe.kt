@@ -7,6 +7,7 @@ data class Prerequisites(
     val hasSources: Boolean,
     val hasPrebuiltBinary: Boolean,
     val passwordlessControl: Boolean,
+    val passwordlessWanted: Boolean = true,
     val wanInterface: String?,
     val zapretInstalled: Boolean,
 ) {
@@ -19,14 +20,25 @@ data class Prerequisites(
         else -> canInstall
     }
 
+    val passwordlessReady: Boolean
+        get() = !passwordlessWanted || passwordlessControl
+
+    fun passwordlessDetail(): String = when {
+        passwordlessControl -> "sudoers"
+        !passwordlessWanted -> "выкл · Настройки"
+        zapretInstalled -> "включится при следующем пароле администратора"
+        else -> "включится при установке"
+    }
+
     companion object {
-        fun probe(passwordless: Boolean): Prerequisites {
+        fun probe(passwordlessEnabled: Boolean, passwordlessWanted: Boolean = true): Prerequisites {
             val payload = ZapretPaths.enginePayload()
             return Prerequisites(
                 hasCompiler = compilerPresent(),
                 hasSources = payload != null,
                 hasPrebuiltBinary = payload?.let(ZapretPaths::hasPrebuiltUtunws) == true,
-                passwordlessControl = passwordless,
+                passwordlessControl = passwordlessEnabled,
+                passwordlessWanted = passwordlessWanted,
                 wanInterface = WanInterface.detect(),
                 zapretInstalled = ZapretPaths.isInstalled,
             )
