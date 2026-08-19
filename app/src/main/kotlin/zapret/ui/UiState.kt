@@ -29,7 +29,7 @@ data class UiState(
     val screen: Screen = Screen.HOME,
     val busy: String? = null,
     val notice: Notice? = null,
-    val passwordless: Boolean = false,
+    val passwordless: Boolean = true,
     val autoUpdate: Boolean = true,
     val appVersion: String = "0.0.0",
     val updateAvailable: UpdateInfo? = null,

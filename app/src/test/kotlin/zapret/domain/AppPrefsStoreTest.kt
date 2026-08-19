@@ -16,15 +16,23 @@ class AppPrefsStoreTest {
             deleteOnExit()
         }
         val store = AppPrefsStore(File(dir, "app-prefs.json"))
-        store.write(AppPrefs(autoUpdate = false))
-        assertFalse(store.read().autoUpdate)
-        store.write(AppPrefs(autoUpdate = true))
+        store.write(AppPrefs(autoUpdate = false, passwordless = false))
+        val read = store.read()
+        assertFalse(read.autoUpdate)
+        assertFalse(read.passwordless)
+        store.write(AppPrefs(autoUpdate = true, passwordless = true))
         assertTrue(store.read().autoUpdate)
+        assertTrue(store.read().passwordless)
     }
 
     @Test
-    fun parseDefaultsMissingFlagToTrue() {
-        assertEquals(true, AppPrefsStore.parse("""{}""")?.autoUpdate)
+    fun parseDefaultsMissingFlagsToTrue() {
+        val parsed = AppPrefsStore.parse("""{}""")
+        assertEquals(true, parsed?.autoUpdate)
+        assertEquals(true, parsed?.passwordless)
         assertEquals(false, AppPrefsStore.parse("""{"autoUpdate": false}""")?.autoUpdate)
+        assertEquals(true, AppPrefsStore.parse("""{"autoUpdate": false}""")?.passwordless)
+        assertEquals(false, AppPrefsStore.parse("""{"passwordless": false}""")?.passwordless)
+        assertEquals(true, AppPrefsStore.parse("""{"passwordless": false}""")?.autoUpdate)
     }
 }

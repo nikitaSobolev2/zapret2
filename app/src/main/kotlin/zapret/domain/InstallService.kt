@@ -29,6 +29,7 @@ class InstallService(
             privileges = privileges,
             payload = payload,
             dataRoot = ZapretPaths.userDataRoot,
+            passwordless = runCatching { AppPrefsStore().read().passwordless }.getOrDefault(true),
             timeout = 5.minutes,
         ).also { service.status() }
     }

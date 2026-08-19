@@ -16,6 +16,7 @@ object EnginePrivileged {
         privileges: PrivilegeRunner,
         payload: File,
         dataRoot: File,
+        passwordless: Boolean = true,
         timeout: Duration = 5.minutes,
     ): CommandResult {
         val stage = Files.createTempDirectory("zapret-engine-").toFile()
@@ -26,7 +27,11 @@ object EnginePrivileged {
             if (!install.isFile) return CommandResult(1, "install.sh missing in staged payload")
             privileges.runScript(
                 install.readText(),
-                args = listOf(stage.absolutePath, dataRoot.absolutePath),
+                args = listOf(
+                    stage.absolutePath,
+                    dataRoot.absolutePath,
+                    if (passwordless) "1" else "0",
+                ),
                 timeout = timeout,
             )
         } finally {

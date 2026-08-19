@@ -4,6 +4,7 @@ import java.io.File
 
 data class AppPrefs(
     val autoUpdate: Boolean = true,
+    val passwordless: Boolean = true,
 )
 
 object AppPrefsPaths {
@@ -42,13 +43,21 @@ class AppPrefsStore(
     companion object {
         fun encode(prefs: AppPrefs): String = """
             |{
-            |  "autoUpdate": ${prefs.autoUpdate}
+            |  "autoUpdate": ${prefs.autoUpdate},
+            |  "passwordless": ${prefs.passwordless}
             |}
         """.trimMargin()
 
         fun parse(text: String): AppPrefs? = runCatching {
-            val match = Regex(""""autoUpdate"\s*:\s*(true|false)""").find(text)
-            AppPrefs(autoUpdate = match?.groupValues?.get(1) != "false")
+            AppPrefs(
+                autoUpdate = bool(text, "autoUpdate", default = true),
+                passwordless = bool(text, "passwordless", default = true),
+            )
         }.getOrNull()
+
+        private fun bool(text: String, key: String, default: Boolean): Boolean {
+            val match = Regex(""""$key"\s*:\s*(true|false)""").find(text) ?: return default
+            return match.groupValues[1] == "true"
+        }
     }
 }

@@ -25,7 +25,7 @@ if [ -x "$OLD_INIT" ]; then
     "$OLD_INIT" stop >/dev/null 2>&1 || true
 fi
 /bin/launchctl bootout system/zapret2 >/dev/null 2>&1 || true
-/bin/rm -f /Library/LaunchDaemons/zapret2.plist /etc/sudoers.d/zapret2
+/bin/rm -f /Library/LaunchDaemons/zapret2.plist /etc/sudoers.d/zapret /etc/sudoers.d/zapret2
 for a in zapret2 zapret2-v4 zapret2-v6; do
     /sbin/pfctl -a "$a" -F all >/dev/null 2>&1 || true
     /bin/rm -f "/etc/pf.anchors/$a"
