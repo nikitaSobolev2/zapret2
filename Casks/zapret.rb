@@ -9,7 +9,7 @@ cask "zapret" do
 
   livecheck do
     url :homepage
-    regex(/Zapret[._-]v?(\d+(?:\.\d+)+)\.dmg/i)
+    regex(/Zapret[._-]v?(\d+(?:\.\d+)+)(?:-(?:arm64|x86_64))?\.dmg/i)
     strategy :github_releases do |json, regex|
       json.filter_map do |release|
         next if release["draft"] || release["prerelease"]

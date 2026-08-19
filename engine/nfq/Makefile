@@ -35,8 +35,8 @@ bsd: $(SRC_FILES)
 	$(CC) -s $(CFLAGS) $(CFLAGS_BSD) -o dvtws $(SRC_FILES) $(LIBS_BSD) $(LDFLAGS) $(LDFLAGS_BSD)
 
 mac: $(SRC_FILES)
-	$(CC) $(CFLAGS) $(CFLAGS_BSD) -isysroot "$(SDKROOT)" -o utunwsa $(SRC_FILES) -target arm64-apple-macos14.0 $(LIBS_BSD) $(LDFLAGS) $(LDFLAGS_MAC)
-	$(CC) $(CFLAGS) $(CFLAGS_BSD) -isysroot "$(SDKROOT)" -o utunwsx $(SRC_FILES) -target x86_64-apple-macos14.0 $(LIBS_BSD) $(LDFLAGS) $(LDFLAGS_MAC)
+	$(CC) $(CFLAGS) $(CFLAGS_BSD) -isysroot "$(SDKROOT)" -o utunwsa $(SRC_FILES) -target arm64-apple-macos12.0 $(LIBS_BSD) $(LDFLAGS) $(LDFLAGS_MAC)
+	$(CC) $(CFLAGS) $(CFLAGS_BSD) -isysroot "$(SDKROOT)" -o utunwsx $(SRC_FILES) -target x86_64-apple-macos12.0 $(LIBS_BSD) $(LDFLAGS) $(LDFLAGS_MAC)
 	strip utunwsa utunwsx
 	lipo -create -output utunws utunwsx utunwsa
 	rm -f utunwsx utunwsa

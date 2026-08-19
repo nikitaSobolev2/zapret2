@@ -62,7 +62,8 @@ xattr -cr /Applications/Zapret.app
 
 ## Install from DMG
 
-1. Download `Zapret-<version>.dmg` from the GitHub release.
+1. Download the matching disk image from the GitHub release:
+   `Zapret-<version>-arm64.dmg` (Apple Silicon) or `Zapret-<version>-x86_64.dmg` (Intel).
 2. Drag `Zapret.app` to Applications.
 3. Launch and use the power button (administrator password) to install the engine.
 
@@ -70,7 +71,7 @@ xattr -cr /Applications/Zapret.app
 
 1. Tag `vX.Y.Z` and push the tag.
 2. Workflow **`build`** creates the GitHub Release (Linux archives).
-3. Workflow **`macOS app`** builds the DMG, attaches it to the same release, bumps the cask.
+3. Workflow **`macOS app`** builds Apple Silicon and Intel DMGs, attaches them to the same release, bumps the cask.
 4. `workflow_dispatch` on `macOS app` only builds a CI artifact — no publish/cask bump.
 
 ```bash

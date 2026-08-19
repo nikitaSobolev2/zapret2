@@ -9,10 +9,25 @@ on:
 permissions:
   contents: write
 
+env:
+  MACOSX_DEPLOYMENT_TARGET: "12.0"
+
 jobs:
   package:
-    name: Package DMG
-    runs-on: macos-14
+    name: Package ${{ matrix.dmg_arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            dmg_arch: arm64
+            java_arch: aarch64
+            python_arch: arm64
+          - runner: macos-15-intel
+            dmg_arch: x86_64
+            java_arch: x64
+            python_arch: x64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,12 +37,13 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          architecture: ${{ matrix.java_arch }}
 
-      # tg-ws-proxy sidecar (PyInstaller) for Telegram Desktop proxy
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          architecture: ${{ matrix.python_arch }}
 
       - name: App version from tag
         id: ver
@@ -44,7 +60,7 @@ jobs:
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Building Zapret $VERSION"
+          echo "Building Zapret $VERSION (${{ matrix.dmg_arch }})"
 
       - name: Package DMG
         working-directory: app
@@ -67,36 +83,70 @@ jobs:
       - name: Locate DMG
         id: dmg
         run: |
-          DMG=$(ls -1 app/build/compose/binaries/main/dmg/Zapret-*.dmg | head -n1)
+          DMG=$(ls -1 app/build/compose/binaries/main/dmg/Zapret-*-${{ matrix.dmg_arch }}.dmg | head -n1)
+          test -f "$DMG"
           SHA=$(shasum -a 256 "$DMG" | awk '{print $1}')
           echo "path=$DMG" >> "$GITHUB_OUTPUT"
           echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
           echo "name=$(basename "$DMG")" >> "$GITHUB_OUTPUT"
           ls -lh "$DMG"
           echo "sha256=$SHA"
+          file "$DMG"
+          echo "=== Zapret executable arch ==="
+          APP=$(find app/build/compose/binaries/main/app -maxdepth 2 -name Zapret.app -type d | head -n1)
+          /usr/bin/lipo -archs "$APP/Contents/MacOS/Zapret" || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Zapret-${{ steps.ver.outputs.version }}-dmg
+          name: Zapret-${{ steps.ver.outputs.version }}-${{ matrix.dmg_arch }}-dmg
           path: ${{ steps.dmg.outputs.path }}
           if-no-files-found: error
 
-      # Same GitHub Release as build.yml (tag vX.Y.Z). Homebrew reads this release, not MacOS.
-      - name: Attach DMG to version release
-        if: github.ref_type == 'tag'
+  publish:
+    name: Attach release and bump cask
+    needs: package
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Version from tag
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download DMGs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Zapret-${{ steps.ver.outputs.version }}-*-dmg
+          merge-multiple: true
+          path: dist
+
+      - name: Require both architectures
+        id: hashes
+        run: |
+          set -euo pipefail
+          ARM="dist/Zapret-${{ steps.ver.outputs.version }}-arm64.dmg"
+          INTEL="dist/Zapret-${{ steps.ver.outputs.version }}-x86_64.dmg"
+          test -f "$ARM"
+          test -f "$INTEL"
+          echo "arm=$(sha256sum "$ARM" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "intel=$(sha256sum "$INTEL" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          ls -lh dist
+
+      - name: Attach DMGs to version release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: zapret2 ${{ github.ref_name }}
-          files: ${{ steps.dmg.outputs.path }}
+          files: dist/*.dmg
           fail_on_unmatched_files: true
           append_body: true
           body: |
 
             ### Zapret macOS ${{ steps.ver.outputs.version }}
 
-            DMG: https://github.com/nikitaSobolev2/zapret2/releases/download/${{ github.ref_name }}/${{ steps.dmg.outputs.name }}
+            Apple Silicon: https://github.com/nikitaSobolev2/zapret2/releases/download/${{ github.ref_name }}/Zapret-${{ steps.ver.outputs.version }}-arm64.dmg
+
+            Intel: https://github.com/nikitaSobolev2/zapret2/releases/download/${{ github.ref_name }}/Zapret-${{ steps.ver.outputs.version }}-x86_64.dmg
 
             ```
             brew tap nikitaSobolev2/zapret2 https://github.com/nikitaSobolev2/zapret2
@@ -104,25 +154,41 @@ jobs:
             brew upgrade --cask zapret
             ```
 
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
       - name: Update Homebrew cask
-        if: github.ref_type == 'tag'
         env:
           VERSION: ${{ steps.ver.outputs.version }}
-          SHA256: ${{ steps.dmg.outputs.sha256 }}
+          SHA256_ARM: ${{ steps.hashes.outputs.arm }}
+          SHA256_INTEL: ${{ steps.hashes.outputs.intel }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          # Tag checkout is often behind master (other CI commits). Bump on latest default branch.
-          git fetch origin "$DEFAULT_BRANCH"
-          git checkout -B "brew-bump-${VERSION}" "origin/${DEFAULT_BRANCH}"
+          git checkout -B "brew-bump-${VERSION}"
 
-          ruby -e '
-            path = "Casks/zapret.rb"
-            text = File.read(path)
-            text.sub!(/version "[^"]+"/, %(version "#{ENV["VERSION"]}"))
-            text.sub!(/sha256 "[^"]+"/, %(sha256 "#{ENV["SHA256"]}"))
-            File.write(path, text)
-          '
+          ruby <<-'RUBY'
+          path = "Casks/zapret.rb"
+          text = File.read(path)
+          version = ENV.fetch("VERSION")
+          arm = ENV.fetch("SHA256_ARM")
+          intel = ENV.fetch("SHA256_INTEL")
+          unless text.include?("arch arm:")
+            text.sub!(/cask "zapret" do\n/, %(cask "zapret" do\n  arch arm: "arm64", intel: "x86_64"\n\n))
+          end
+          text.sub!(/version "[^"]+"/, %(version "#{version}"))
+          if text =~ /sha256 arm:/
+            text.sub!(/sha256 arm:\s+"[a-fA-F0-9]+"\s*,\s*\n?\s*intel:\s+"[a-fA-F0-9]+"/, %(sha256 arm: "#{arm}",\n         intel: "#{intel}"))
+          else
+            text.sub!(/sha256 "[^"]+"/, %(sha256 arm: "#{arm}",\n         intel: "#{intel}"))
+          end
+          old_url = 'Zapret-#{version}.dmg'
+          new_url = 'Zapret-#{version}-#{arch}.dmg'
+          text.gsub!(old_url, new_url) unless text.include?(new_url)
+          File.write(path, text)
+          RUBY
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -133,7 +199,6 @@ jobs:
           fi
           git commit -m "brew: bump zapret cask to ${VERSION}"
 
-          # Retry once if master moved during the job.
           if ! git push origin "HEAD:refs/heads/${DEFAULT_BRANCH}"; then
             git fetch origin "$DEFAULT_BRANCH"
             git rebase "origin/${DEFAULT_BRANCH}"

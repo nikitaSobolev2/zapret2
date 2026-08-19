@@ -194,6 +194,11 @@ fun buildDmgWithHdiutil(appBundle: File, dmgFile: File, volumeName: String, buil
     check(code == 0 && dest.isFile) { "hdiutil create failed for $dest\n$output" }
 }
 
+fun macPackageArch(): String {
+    val arch = System.getProperty("os.arch").lowercase()
+    return if (arch == "aarch64" || arch == "arm64") "arm64" else "x86_64"
+}
+
 fun registerHdiutilDmg(
     taskName: String,
     appImageTask: String,
@@ -202,7 +207,7 @@ fun registerHdiutilDmg(
 ) {
     tasks.register(taskName) {
         dependsOn(appImageTask)
-        val dmgOut = layout.buildDirectory.file("$dmgDir/Zapret-${version}.dmg")
+        val dmgOut = layout.buildDirectory.file("$dmgDir/Zapret-${version}-${macPackageArch()}.dmg")
         inputs.dir(layout.buildDirectory.dir(appDir))
         outputs.file(dmgOut)
         doLast {

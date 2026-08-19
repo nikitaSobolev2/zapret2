@@ -16,7 +16,7 @@
 
 ## Установка
 
-macOS 12+, пароль администратора при первой установке движка.
+macOS 12+, Apple Silicon **или Intel**. Пароль администратора при первой установке движка.
 
 **Homebrew**
 
@@ -27,7 +27,7 @@ brew install --cask zapret
 
 Обновление: `brew update && brew upgrade --cask zapret`.
 
-**DMG** — с [Releases](https://github.com/nikitaSobolev2/zapret2/releases): перетащить в «Программы».
+**DMG** — с [Releases](https://github.com/nikitaSobolev2/zapret2/releases): `Zapret-*-arm64.dmg` для Apple Silicon, `Zapret-*-x86_64.dmg` для Intel. Перетащить в «Программы».
 
 Если Gatekeeper ругается (сборка без подписи Apple):
 

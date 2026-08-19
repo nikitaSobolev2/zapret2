@@ -48,7 +48,7 @@ class AppUpdateService(
         var info = parseLatestDmg(body) ?: return@runCatching null
         requireTrustedDownloadUrl(info.downloadUrl)
         if (info.sha256 == null) {
-            info = info.copy(sha256 = fetchCaskSha256(info.version))
+            info = info.copy(sha256 = fetchCaskSha256(info.version, currentMacDmgArch()))
         }
         if (info.sha256 == null) error("release has no SHA-256 for ${info.assetName}")
         if (AppVersion.isNewer(info.version, currentVersion)) info else null
@@ -57,7 +57,7 @@ class AppUpdateService(
     fun download(info: UpdateInfo, onProgress: (Long, Long?) -> Unit = { _, _ -> }): Result<File> = runCatching {
         clearCancel()
         requireTrustedDownloadUrl(info.downloadUrl)
-        val expectedSha = info.sha256 ?: fetchCaskSha256(info.version)
+        val expectedSha = info.sha256 ?: fetchCaskSha256(info.version, currentMacDmgArch())
             ?: error("missing SHA-256 for ${info.assetName}")
         val dest = File(AppPrefsPaths.cacheDir, info.assetName)
         val connection = open(info.downloadUrl, timeoutMs = 600_000)
@@ -86,16 +86,11 @@ class AppUpdateService(
         dest
     }
 
-    private fun fetchCaskSha256(version: String): String? {
+    private fun fetchCaskSha256(version: String, arch: String): String? {
         // Repo default branch is master; keep main as fallback for forks/renames.
         for (branch in listOf("master", "main")) {
             val url = "https://raw.githubusercontent.com/$TRUSTED_REPO/$branch/Casks/zapret.rb"
-            val sha = runCatching {
-                val text = getText(url)
-                val caskVersion = Regex("""version\s+"([^"]+)"""").find(text)?.groupValues?.get(1)
-                if (caskVersion != null && caskVersion != version) return@runCatching null
-                Regex("""sha256\s+"([a-fA-F0-9]{64})"""").find(text)?.groupValues?.get(1)?.lowercase()
-            }.getOrNull()
+            val sha = runCatching { parseCaskSha256(getText(url), version, arch) }.getOrNull()
             if (sha != null) return sha
         }
         return null
@@ -226,6 +221,7 @@ class AppUpdateService(
         const val NOT_PACKAGED = "Обновление доступно только в установленном Zapret.app"
         private const val USER_AGENT = "Zapret-macOS-control"
         private val HEX_SHA256 = Regex("^[a-fA-F0-9]{64}$")
+        private val DMG_ASSET = Regex("""^Zapret-(\d+(?:\.\d+){0,2})(?:-(arm64|x86_64))?\.dmg$""")
 
         fun requireTrustedApiUrl(url: String) {
             val uri = URI.create(url)
@@ -276,21 +272,50 @@ class AppUpdateService(
             }
         }
 
-        fun parseLatestDmg(json: String): UpdateInfo? {
+        fun currentMacDmgArch(): String {
+            val arch = System.getProperty("os.arch").orEmpty().lowercase()
+            return if (arch == "aarch64" || arch == "arm64") "arm64" else "x86_64"
+        }
+
+        fun parseCaskSha256(caskText: String, version: String, arch: String): String? {
+            val caskVersion = Regex("""version\s+"([^"]+)"""").find(caskText)?.groupValues?.get(1)
+            if (caskVersion != null && caskVersion != version) return null
+            val collapsed = caskText.replace(Regex("\\s+"), " ")
+            val dual = Regex(
+                """sha256 arm:\s+"([a-fA-F0-9]{64})"\s*,\s*intel:\s+"([a-fA-F0-9]{64})"""",
+            ).find(collapsed)
+            if (dual != null) {
+                val hex = if (arch == "arm64") dual.groupValues[1] else dual.groupValues[2]
+                return hex.lowercase()
+            }
+            return Regex("""sha256\s+"([a-fA-F0-9]{64})"""").find(caskText)?.groupValues?.get(1)?.lowercase()
+        }
+
+        fun parseLatestDmg(json: String, arch: String = currentMacDmgArch()): UpdateInfo? {
             val tag = Regex(""""tag_name"\s*:\s*"([^"]+)"""").find(json)?.groupValues?.get(1)
                 ?: return null
             val versionFromTag = tag.removePrefix("v")
-            val assetBlocks = Regex(""""browser_download_url"\s*:\s*"(https://[^"]+)"""")
+            val dmgUrls = Regex(""""browser_download_url"\s*:\s*"(https://[^"]+)"""")
                 .findAll(json)
                 .map { it.groupValues[1] }
+                .filter { url ->
+                    val name = url.substringAfterLast('/')
+                    DMG_ASSET.matches(name) &&
+                        runCatching { requireTrustedDownloadUrl(url); true }.getOrDefault(false)
+                }
                 .toList()
-            val dmgUrl = assetBlocks.firstOrNull { url ->
-                val name = url.substringAfterLast('/')
-                name.startsWith("Zapret-") && name.endsWith(".dmg") &&
-                    runCatching { requireTrustedDownloadUrl(url); true }.getOrDefault(false)
-            } ?: return null
+            val preferred = dmgUrls.firstOrNull { it.substringAfterLast('/').endsWith("-$arch.dmg") }
+            val legacy = if (arch == "arm64") {
+                dmgUrls.firstOrNull { url ->
+                    val name = url.substringAfterLast('/')
+                    !name.endsWith("-arm64.dmg") && !name.endsWith("-x86_64.dmg")
+                }
+            } else {
+                null
+            }
+            val dmgUrl = preferred ?: legacy ?: return null
             val name = dmgUrl.substringAfterLast('/')
-            val versionFromName = Regex("""Zapret-(\d+(?:\.\d+){0,2})\.dmg""").find(name)?.groupValues?.get(1)
+            val versionFromName = DMG_ASSET.find(name)?.groupValues?.get(1)
             val sha256 = extractSha256(json, name)
             return UpdateInfo(
                 version = versionFromName ?: versionFromTag,
@@ -302,27 +327,22 @@ class AppUpdateService(
 
         /** GitHub asset `digest` field or companion `*.dmg.sha256` / body checksum. */
         fun extractSha256(json: String, assetName: String): String? {
-            // Prefer digest next to this asset's download URL (uploader blobs make name↔digest far apart).
-            val nearUrl = Regex(
-                """"digest"\s*:\s*"sha256:([a-fA-F0-9]{64})"[\s\S]{0,300}?"browser_download_url"\s*:\s*"https://[^"]+/${Regex.escape(assetName)}""",
+            val escaped = Regex.escape(assetName)
+            val sameAsset = """(?:(?!"browser_download_url")[\s\S]){0,4000}"""
+            val digestThenUrl = Regex(
+                """"digest"\s*:\s*"sha256:([a-fA-F0-9]{64})"$sameAsset"browser_download_url"\s*:\s*"https://[^"]+/$escaped"""",
             ).find(json)?.groupValues?.get(1)
-            if (nearUrl != null) return nearUrl.lowercase()
+            if (digestThenUrl != null) return digestThenUrl.lowercase()
 
             val urlThenDigest = Regex(
-                """"browser_download_url"\s*:\s*"https://[^"]+/${Regex.escape(assetName)}"[\s\S]{0,300}?"digest"\s*:\s*"sha256:([a-fA-F0-9]{64})""",
+                """"browser_download_url"\s*:\s*"https://[^"]+/$escaped"$sameAsset"digest"\s*:\s*"sha256:([a-fA-F0-9]{64})"""",
             ).find(json)?.groupValues?.get(1)
             if (urlThenDigest != null) return urlThenDigest.lowercase()
 
-            // name … digest can span the nested uploader object (~1–2 KB).
-            val digestNearName = Regex(
-                """"name"\s*:\s*"${Regex.escape(assetName)}"[\s\S]{0,4000}?"digest"\s*:\s*"sha256:([a-fA-F0-9]{64})""",
+            val nameThenDigest = Regex(
+                """"name"\s*:\s*"$escaped"(?:(?!"name"\s*:)[\s\S]){0,4000}?"digest"\s*:\s*"sha256:([a-fA-F0-9]{64})"""",
             ).find(json)?.groupValues?.get(1)
-            if (digestNearName != null) return digestNearName.lowercase()
-
-            val digestBeforeName = Regex(
-                """"digest"\s*:\s*"sha256:([a-fA-F0-9]{64})"[\s\S]{0,4000}?"name"\s*:\s*"${Regex.escape(assetName)}""",
-            ).find(json)?.groupValues?.get(1)
-            if (digestBeforeName != null) return digestBeforeName.lowercase()
+            if (nameThenDigest != null) return nameThenDigest.lowercase()
 
             val bodyHex = Regex(
                 """(?i)(?:sha256|SHA-256)[=:\s]+([a-fA-F0-9]{64}).{0,80}${Regex.escape(assetName)}""",

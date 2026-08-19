@@ -28,7 +28,7 @@ class AppUpdateParseTest {
             }
         """.trimIndent()
 
-        val info = AppUpdateService.parseLatestDmg(json)
+        val info = AppUpdateService.parseLatestDmg(json, arch = "arm64")
         assertNotNull(info)
         assertEquals("1.2.3", info.version)
         assertEquals("Zapret-1.2.3.dmg", info.assetName)
@@ -68,7 +68,7 @@ class AppUpdateParseTest {
               }]
             }
         """.trimIndent()
-        val info = AppUpdateService.parseLatestDmg(json)
+        val info = AppUpdateService.parseLatestDmg(json, arch = "arm64")
         assertNotNull(info)
         assertEquals("c7128a571bec0388b32fa2e358c0e8e35d15746a3132f4217052f203cbf04e14", info.sha256)
     }
@@ -86,7 +86,7 @@ class AppUpdateParseTest {
               ]
             }
         """.trimIndent()
-        assertNull(AppUpdateService.parseLatestDmg(json))
+        assertNull(AppUpdateService.parseLatestDmg(json, arch = "arm64"))
     }
 
     @Test
@@ -109,5 +109,75 @@ class AppUpdateParseTest {
         AppUpdateService.verifySha256(file, ok)
         assertFails { AppUpdateService.verifySha256(file, "b".repeat(64)) }
         file.delete()
+    }
+
+    @Test
+    fun parseLatestDmgPrefersMatchingArchAsset() {
+        val json = """
+            {
+              "tag_name": "v2.4.0",
+              "assets": [
+                {
+                  "name": "Zapret-2.4.0-x86_64.dmg",
+                  "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "browser_download_url": "https://github.com/nikitaSobolev2/zapret2/releases/download/v2.4.0/Zapret-2.4.0-x86_64.dmg"
+                },
+                {
+                  "name": "Zapret-2.4.0-arm64.dmg",
+                  "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "browser_download_url": "https://github.com/nikitaSobolev2/zapret2/releases/download/v2.4.0/Zapret-2.4.0-arm64.dmg"
+                }
+              ]
+            }
+        """.trimIndent()
+        val arm = AppUpdateService.parseLatestDmg(json, arch = "arm64")
+        assertNotNull(arm)
+        assertEquals("Zapret-2.4.0-arm64.dmg", arm.assetName)
+        assertEquals("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", arm.sha256)
+        val intel = AppUpdateService.parseLatestDmg(json, arch = "x86_64")
+        assertNotNull(intel)
+        assertEquals("Zapret-2.4.0-x86_64.dmg", intel.assetName)
+        assertEquals("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", intel.sha256)
+    }
+
+    @Test
+    fun intelDoesNotTakeLegacyArmOnlyDmg() {
+        val json = """
+            {
+              "tag_name": "v2.3.0",
+              "assets": [
+                {
+                  "name": "Zapret-2.3.0.dmg",
+                  "browser_download_url": "https://github.com/nikitaSobolev2/zapret2/releases/download/v2.3.0/Zapret-2.3.0.dmg"
+                }
+              ]
+            }
+        """.trimIndent()
+        assertNull(AppUpdateService.parseLatestDmg(json, arch = "x86_64"))
+        assertEquals(
+            "Zapret-2.3.0.dmg",
+            AppUpdateService.parseLatestDmg(json, arch = "arm64")?.assetName,
+        )
+    }
+
+    @Test
+    fun parseCaskSha256ReadsArchHashes() {
+        val cask = """
+            cask "zapret" do
+              arch arm: "arm64", intel: "x86_64"
+              version "2.4.0"
+              sha256 arm: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                     intel: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            end
+        """.trimIndent()
+        assertEquals(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            AppUpdateService.parseCaskSha256(cask, "2.4.0", "arm64"),
+        )
+        assertEquals(
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            AppUpdateService.parseCaskSha256(cask, "2.4.0", "x86_64"),
+        )
+        assertNull(AppUpdateService.parseCaskSha256(cask, "9.9.9", "arm64"))
     }
 }
