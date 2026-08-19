@@ -50,6 +50,7 @@ fun App(model: AppViewModel) = ZapretTheme {
                         onCheckUpdates = model::checkForUpdates,
                         onUpdateNow = { model.startUpdate() },
                         onProbeStrategies = model::probeStrategies,
+                        onOpenList = model::openListFile,
                     )
                 }
             }

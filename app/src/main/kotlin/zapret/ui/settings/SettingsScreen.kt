@@ -52,12 +52,15 @@ fun SettingsScreen(
     onCheckUpdates: () -> Unit,
     onUpdateNow: () -> Unit,
     onProbeStrategies: () -> Unit,
+    onOpenList: (String) -> Unit,
     mod: Modifier = Modifier,
 ) {
     var draft by remember(state.config) { mutableStateOf(state.config) }
     var tgDraft by remember(state.tgConfig.copy(enabled = false)) { mutableStateOf(state.tgConfig) }
     var lists by remember(state.listContents) { mutableStateOf(state.listContents) }
     var selectedList by remember { mutableStateOf(EngineListsStore.USER_HOST_LIST) }
+    var replacedOversized by remember(state.listContents) { mutableStateOf(setOf<String>()) }
+    val oversizedNames = state.oversizedLists.keys
     var tgAdvanced by remember { mutableStateOf(false) }
     var systemAdvanced by remember { mutableStateOf(false) }
     var askUninstall by remember { mutableStateOf(false) }
@@ -142,19 +145,49 @@ fun SettingsScreen(
                     onSelect = { selectedList = it },
                     enabled = editable,
                 )
-                ValueField(
-                    label = listLabel,
-                    value = lists[selectedList].orEmpty(),
-                    onChange = { lists = lists + (selectedList to it) },
-                    singleLine = false,
-                    textStyle = MonoStyle,
-                    minHeight = 140.dp,
-                    enabled = editable,
-                    description = "Один хост на строку, без https:// и без *. Поддомены совпадают сами. Нужен «Применить и перезапустить».",
-                )
+                val editInApp = selectedList !in oversizedNames || selectedList in replacedOversized
+                if (editInApp) {
+                    ValueField(
+                        label = listLabel,
+                        value = lists[selectedList].orEmpty(),
+                        onChange = { lists = lists + (selectedList to it) },
+                        singleLine = false,
+                        textStyle = MonoStyle,
+                        minHeight = 140.dp,
+                        maxHeight = 220.dp,
+                        enabled = editable,
+                        description = "Один хост на строку, без https:// и без *. Поддомены совпадают сами. Нужен «Применить и перезапустить».",
+                    )
+                } else {
+                    val sizeKb = ((state.oversizedLists[selectedList] ?: 0L) + 1023) / 1024
+                    Text(
+                        text = "Файл слишком большой для экрана настроек ($sizeKb КБ). Встроенный редактор его не рисует.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Palette.text,
+                    )
+                    Text(
+                        text = "Откройте во внешнем редакторе. «Применить» этот файл не перезапишет.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Palette.textMuted,
+                    )
+                    GhostButton(
+                        text = "Открыть в редакторе",
+                        enabled = editable,
+                        onClick = { onOpenList(selectedList) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    TextAction(
+                        text = "Заменить содержимым здесь",
+                        enabled = editable,
+                        onClick = {
+                            replacedOversized = replacedOversized + selectedList
+                            lists = lists + (selectedList to "")
+                        },
+                    )
+                }
                 TextAction(
                     text = "Сбросить выбранный",
-                    enabled = editable,
+                    enabled = editable && (selectedList !in oversizedNames || selectedList in replacedOversized),
                     onClick = {
                         val defaults = state.defaultListContents[selectedList]
                         if (defaults != null) lists = lists + (selectedList to defaults)
@@ -163,7 +196,10 @@ fun SettingsScreen(
                 TextAction(
                     text = "Сбросить все к пакету",
                     enabled = editable,
-                    onClick = { lists = state.defaultListContents },
+                    onClick = {
+                        lists = state.defaultListContents.filterKeys { it !in oversizedNames }
+                        replacedOversized = emptySet()
+                    },
                 )
             }
 
@@ -291,7 +327,13 @@ fun SettingsScreen(
                     else -> "Применить и перезапустить"
                 },
                 enabled = editable,
-                onClick = { onApply(draft, tgDraft.withLiveEnabled(state.tgConfig.enabled), lists) },
+                onClick = {
+                    onApply(
+                        draft,
+                        tgDraft.withLiveEnabled(state.tgConfig.enabled),
+                        EngineListsStore.applyListDrafts(lists, oversizedNames, replacedOversized),
+                    )
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
             if (!state.installed) {

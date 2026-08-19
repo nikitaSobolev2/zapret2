@@ -24,6 +24,7 @@ data class UiState(
     val strategies: List<StrategyEntry> = emptyList(),
     val listContents: Map<String, String> = emptyMap(),
     val defaultListContents: Map<String, String> = emptyMap(),
+    val oversizedLists: Map<String, Long> = emptyMap(),
     val tgConfig: TgWsProxyConfig = TgWsProxyConfig(),
     val screen: Screen = Screen.HOME,
     val busy: String? = null,

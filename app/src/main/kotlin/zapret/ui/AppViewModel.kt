@@ -161,6 +161,14 @@ class AppViewModel(private val scope: CoroutineScope) {
         orchestrator.applyTg(merged)
     }
 
+    fun openListFile(name: String) {
+        if (name !in EngineListsStore.LIST_FILES) return
+        runCatching { listsStore.ensureSeeded() }
+        val file = listsStore.fileFor(name)
+        if (!file.isFile) return
+        ProcessBuilder("/usr/bin/open", "-t", file.absolutePath).start()
+    }
+
     fun restartTgProxy() = operation("Перезапуск TG proxy") {
         val config = tgStore.read()
         if (!config.enabled) return@operation CommandResult(1, "TG proxy выключен в настройках")
@@ -422,12 +430,21 @@ class AppViewModel(private val scope: CoroutineScope) {
         runCatching { listsStore.ensureSeeded() }
         val payload = ZapretPaths.enginePayload()
         val strategies = StrategyCatalog.load(payload)
-        val listContents = EngineListsStore.LIST_FILES.associateWith { name ->
-            runCatching { listsStore.readList(name) }.getOrDefault("")
-        }
+        val oversizedLists = EngineListsStore.LIST_FILES.mapNotNull { name ->
+            val file = listsStore.fileFor(name)
+            val size = file.takeIf { it.isFile }?.length() ?: 0L
+            if (size > EngineListsStore.EDITOR_MAX_BYTES) name to size else null
+        }.toMap()
+        val listContents = EngineListsStore.LIST_FILES
+            .filterNot { it in oversizedLists }
+            .associateWith { name ->
+                runCatching { listsStore.readList(name) }.getOrDefault("")
+            }
         val defaultsDir = payload?.let { File(it, "default-lists") }
         val defaultListContents = EngineListsStore.LIST_FILES.associateWith { name ->
-            defaultsDir?.let { File(it, name) }?.takeIf { it.isFile }?.readText().orEmpty()
+            val file = defaultsDir?.let { File(it, name) }?.takeIf { it.isFile }
+            if (file == null || file.length() > EngineListsStore.EDITOR_MAX_BYTES) ""
+            else file.readText()
         }
         state = state.copy(
             installed = ZapretPaths.isInstalled,
@@ -435,6 +452,7 @@ class AppViewModel(private val scope: CoroutineScope) {
             strategies = strategies,
             listContents = listContents,
             defaultListContents = defaultListContents,
+            oversizedLists = oversizedLists,
             tgConfig = runCatching { tgStore.read() }.getOrDefault(state.tgConfig),
             passwordless = passwordlessOn,
             autoUpdate = prefs.autoUpdate,

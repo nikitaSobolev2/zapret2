@@ -78,6 +78,37 @@ class EngineListsStoreTest {
     }
 
     @Test
+    fun applyListDraftsSkipsOversizedUnlessReplaced() {
+        val drafts = mapOf(
+            "list-general.txt" to "a.example\n",
+            "ipset-all.txt" to "",
+        )
+        assertEquals(
+            setOf("list-general.txt"),
+            EngineListsStore.applyListDrafts(drafts, setOf("ipset-all.txt")).keys,
+        )
+        assertEquals(
+            setOf("list-general.txt", "ipset-all.txt"),
+            EngineListsStore.applyListDrafts(drafts, setOf("ipset-all.txt"), setOf("ipset-all.txt")).keys,
+        )
+    }
+
+    @Test
+    fun tooLargeForEditorUsesByteLength() {
+        val root = File.createTempFile("zapret-lists", "").apply {
+            delete()
+            mkdirs()
+            deleteOnExit()
+        }
+        val listsDir = File(root, "lists").apply { mkdirs() }
+        val store = EngineListsStore(listsDir = listsDir, defaultsDir = { null })
+        store.ensureSeeded()
+        File(listsDir, "ipset-all.txt").writeBytes(ByteArray(EngineListsStore.EDITOR_MAX_BYTES.toInt() + 1))
+        assertTrue(store.tooLargeForEditor("ipset-all.txt"))
+        assertTrue(!store.tooLargeForEditor("list-general.txt"))
+    }
+
+    @Test
     fun ipsetModeRoundTrip() {
         assertEquals(IpsetMode.LOADED, IpsetMode.of("loaded"))
         assertEquals(IpsetMode.ANY, IpsetMode.of("any"))

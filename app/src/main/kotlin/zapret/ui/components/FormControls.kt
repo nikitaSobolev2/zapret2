@@ -147,6 +147,7 @@ fun ValueField(
     singleLine: Boolean = true,
     textStyle: TextStyle = MaterialTheme.typography.bodyLarge,
     minHeight: Dp = Dp.Unspecified,
+    maxHeight: Dp = Dp.Unspecified,
     description: String? = null,
     enabled: Boolean = true,
 ) {
@@ -170,7 +171,9 @@ fun ValueField(
                 focusedLabelColor = Palette.accent,
                 unfocusedLabelColor = Palette.textMuted,
             ),
-            modifier = Modifier.fillMaxWidth().heightIn(min = minHeight),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = minHeight, max = maxHeight),
         )
         if (description != null) {
             Text(

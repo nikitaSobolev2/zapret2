@@ -72,6 +72,17 @@ class EngineListsStore(
     private val blockQuicFile: File
         get() = File(ZapretPaths.userDataRoot, "block-quic")
 
+    fun fileFor(name: String): File {
+        require(name in LIST_FILES) { "unknown list: $name" }
+        return File(listsDir, name)
+    }
+
+    fun tooLargeForEditor(name: String): Boolean {
+        require(name in LIST_FILES) { "unknown list: $name" }
+        val file = File(listsDir, name)
+        return file.isFile && file.length() > EDITOR_MAX_BYTES
+    }
+
     fun readList(name: String): String {
         require(name in LIST_FILES) { "unknown list: $name" }
         ensureSeeded()
@@ -108,6 +119,16 @@ class EngineListsStore(
 
     companion object {
         const val USER_HOST_LIST = "list-general-user.txt"
+
+        /** Compose TextField cannot layout tens of thousands of lines (ipset-all). */
+        const val EDITOR_MAX_BYTES = 48L * 1024
+
+        fun applyListDrafts(
+            drafts: Map<String, String>,
+            oversized: Set<String>,
+            replaceOversized: Set<String> = emptySet(),
+        ): Map<String, String> =
+            drafts.filterKeys { it in LIST_FILES && (it !in oversized || it in replaceOversized) }
 
         val LIST_FILES = listOf(
             "list-general.txt",
