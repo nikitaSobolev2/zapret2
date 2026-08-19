@@ -91,10 +91,16 @@ jobs:
           echo "name=$(basename "$DMG")" >> "$GITHUB_OUTPUT"
           ls -lh "$DMG"
           echo "sha256=$SHA"
-          file "$DMG"
-          echo "=== Zapret executable arch ==="
           APP=$(find app/build/compose/binaries/main/app -maxdepth 2 -name Zapret.app -type d | head -n1)
-          /usr/bin/lipo -archs "$APP/Contents/MacOS/Zapret" || true
+          test -d "$APP"
+          LAUNCHER="$APP/Contents/MacOS/Zapret"
+          test -f "$LAUNCHER"
+          ARCHS=$(/usr/bin/lipo -archs "$LAUNCHER")
+          echo "Zapret launcher archs: $ARCHS"
+          echo "$ARCHS" | grep -qw "${{ matrix.dmg_arch }}" || {
+            echo "expected launcher arch ${{ matrix.dmg_arch }}, got: $ARCHS" >&2
+            exit 1
+          }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -106,9 +112,14 @@ jobs:
   publish:
     name: Attach release and bump cask
     needs: package
-    if: github.ref_type == 'tag'
+    if: success() && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
       - name: Version from tag
         id: ver
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
@@ -153,11 +164,6 @@ jobs:
             brew install --cask zapret
             brew upgrade --cask zapret
             ```
-
-      - name: Checkout default branch
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.repository.default_branch }}
 
       - name: Update Homebrew cask
         env:
