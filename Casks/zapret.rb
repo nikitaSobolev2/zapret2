@@ -1,8 +1,11 @@
 cask "zapret" do
-  version "2.3.0"
-  sha256 "5b024b46c019c4c16b676b12d94116d243f829073cc77a578de35e29537ee4a7"
+  arch arm: "arm64", intel: "x86_64"
 
-  url "https://github.com/nikitaSobolev2/zapret2/releases/download/v#{version}/Zapret-#{version}.dmg"
+  version "2.4.0"
+  sha256 arm: "ab10b81db77a0f0ed9630981bc0044595086b7d893421d406afdcca48338d59e",
+         intel: "a3cbf15f38bc73628c84b5da254554a3ac3016eac7cc3822684dbde56d7d21d4"
+
+  url "https://github.com/nikitaSobolev2/zapret2/releases/download/v#{version}/Zapret-#{version}-#{arch}.dmg"
   name "Zapret"
   desc "macOS control app for zapret (DPI bypass via utunws + PF)"
   homepage "https://github.com/nikitaSobolev2/zapret2"
